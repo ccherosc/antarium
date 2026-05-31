@@ -8,6 +8,7 @@ export const TILE = {
   FOOD: 6,
   WATER: 7,
   EGG: 8,
+  ANTHILL: 9,   // displaced soil piled above surface by dirt-carrying ants
 };
 
 export const ROLE = {
@@ -16,6 +17,8 @@ export const ROLE = {
   DIGGER: 2,
   FORAGER: 3,
   NURSE: 4,
+  EXPLORER: 5,  // seeks organics in soil, converts deposits to underground food
+  ROGUE: 6,     // rare chaos ant — ignores rules, digs deep, fights hard
 };
 
 export const STATE = {
@@ -28,6 +31,9 @@ export const STATE = {
   NURSING: 6,
   RESTING: 7,
   RETURNING: 8,
+  DUMPING_DIRT: 9, // carrying excavated soil up to the surface anthill
+  DEFENDING:   10, // rushing a surface creature and attacking it
+  FEASTING:    11, // collecting food chunks from a defeated creature corpse
 };
 
 export const CONFIG = {
@@ -35,16 +41,17 @@ export const CONFIG = {
   WORLD_HEIGHT: 160,
   TILE_SIZE: 4,
 
-  SURFACE_ROW: 14,
+  SURFACE_ROW: 20,       // was 14; extra sky rows show anthill and sky gradient
   GLASS_THICKNESS: 2,
 
   COLONY_X: 120,
-  COLONY_Y: 65,
+  COLONY_Y: 71,          // shifted with surface (+6) so relative depth is unchanged
 
   INITIAL_WORKERS: 12,
   INITIAL_DIGGERS: 6,
   INITIAL_FORAGERS: 8,
   INITIAL_NURSES: 4,
+  INITIAL_EXPLORERS: 4,
   INITIAL_EGGS: 6,
 
   ANT_MOVE_TICKS: 3,

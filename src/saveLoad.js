@@ -1,5 +1,5 @@
 const VERSION = 1;
-const key = mode => `antarium_v${VERSION}_${mode}`;
+const key = mode => `pixelants_v${VERSION}_${mode}`;
 
 export function hasSave(mode) {
   return !!localStorage.getItem(key(mode));

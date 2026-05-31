@@ -77,6 +77,7 @@ function tileColor(type, x, y, world) {
   const depth = y / world.height;
 
   switch (type) {
+    case TILE.ANTHILL: // rendered separately after sky; treat as air on the world canvas
     case TILE.AIR:
       return '#7ab8d8'; // sky blue (covered by sky gradient)
 
@@ -158,6 +159,23 @@ function drawTile(ctx, type, x, y, world) {
   if (type === TILE.WATER) {
     ctx.fillStyle = '#4090e8';
     ctx.fillRect(px, py, ts, 1);
+  }
+
+  // Organic matter specs — dark flecks visible in soil
+  if (type === TILE.SOIL && world.organics[i] > 0.25) {
+    const o  = world.organics[i];
+    const nh = _hash(x + 77, y + 33);
+    // Primary spec — always present above threshold
+    if (nh > 160 - o * 80) {
+      ctx.fillStyle = o > 0.65 ? '#1e1810' : '#2c2418';
+      ctx.fillRect(px + (nh & 3), py + ((nh >> 2) & 3), 1, 1);
+    }
+    // Secondary spec — only for rich deposits
+    if (o > 0.55) {
+      const nh2 = _hash(x + 200, y + 150);
+      ctx.fillStyle = '#181410';
+      ctx.fillRect(px + ((nh2 & 3) ^ 2), py + (((nh2 >> 2) & 3) ^ 1), 1, 1);
+    }
   }
 
   // Dig-progress cracks

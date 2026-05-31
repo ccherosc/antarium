@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Antarium — Pixel Ant Colony</title>
+  <title>Pixel Ants</title>
   <meta name="description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Choose Screensaver mode to relax or Survival mode to keep the queen alive.">
 
   <!-- PWA -->
@@ -14,7 +14,7 @@
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Antarium — Pixel Ant Colony">
+  <meta property="og:title" content="Pixel Ants">
   <meta property="og:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Screensaver or survival — you choose.">
   <meta property="og:image" content="og-image.png">
   <meta property="og:image:width" content="1200">
@@ -22,7 +22,7 @@
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Antarium — Pixel Ant Colony">
+  <meta name="twitter:title" content="Pixel Ants">
   <meta name="twitter:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Screensaver or survival — you choose.">
   <meta name="twitter:image" content="og-image.png">
 
@@ -33,7 +33,7 @@
     <canvas id="gameCanvas"></canvas>
 
     <div id="dashboard">
-      <div class="dash-title">ANTARIUM</div>
+      <div class="dash-title">PIXEL ANTS</div>
       <div class="dash-mode" id="stat-mode">SCREENSAVER</div>
       <div class="dash-day" id="stat-day">DAY 1</div>
 
@@ -105,6 +105,12 @@
           <button class="boost-btn" data-role="nurse" title="No boost">+</button>
         </div>
         <div class="stat-bar-wrap"><div class="stat-bar" id="bar-role-nurse" style="width:15%;background:#406878"></div></div>
+        <div class="dash-row">
+          <span>Explorer</span>
+          <span id="stat-role-explorer">0</span>
+          <button class="boost-btn" data-role="explorer" title="No boost">+</button>
+        </div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-role-explorer" style="width:0%;background:#605848"></div></div>
       </div>
 
       <div class="dash-section save-section">
@@ -162,8 +168,8 @@
     <div id="mode-select">
 
       <div id="ms-pick">
-        <div class="ms-title">ANTARIUM</div>
-        <div class="ms-sub">pixel ant colony simulation</div>
+        <div class="ms-title">PIXEL ANTS</div>
+        <div class="ms-sub">pixel ant farm simulation</div>
         <div class="ms-options">
           <button class="ms-btn" id="btn-mode-screensaver">
             <div class="ms-btn-name">Screensaver</div>
@@ -177,7 +183,7 @@
       </div>
 
       <div id="ms-confirm" class="hidden">
-        <div class="ms-title">ANTARIUM</div>
+        <div class="ms-title">PIXEL ANTS</div>
         <div class="ms-resume-label">Saved colony found</div>
         <div class="ms-resume-info" id="ms-resume-info"></div>
         <div class="ms-options">

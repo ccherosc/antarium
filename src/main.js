@@ -12,6 +12,7 @@ import { GameState } from './gameState.js';
 import { logEvent } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
 import { Tutorial } from './ui/tutorial.js';
+import { CreatureSystem } from './simulation/creatures.js';
 
 const canvas = document.getElementById('gameCanvas');
 
@@ -112,12 +113,13 @@ function pickMode() {
 const gameLoop = new GameLoop(
   (dt) => {
     world.update(dt, { antSystem, queen });
-    antSystem.update(dt, queen, { world });
+    antSystem.update(dt, queen, { world, creatures });
     queen.update(world, antSystem, {});
     stats.update(world, antSystem, queen);
+    creatures.update(world, antSystem);
   },
   () => {
-    renderer.render(camera, world, antSystem, queen);
+    renderer.render(camera, world, antSystem, queen, creatures);
     dashboard.update(stats, world, antSystem);
 
     if (GameState.mode === 'survival' && !GameState.over) {
@@ -127,6 +129,8 @@ const gameLoop = new GameLoop(
     }
   }
 );
+
+const creatures = new CreatureSystem();
 
 const controls = new Controls(camera, world, gameLoop, antSystem);
 const input    = new InputHandler(canvas, camera, world, controls);

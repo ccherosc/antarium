@@ -49,12 +49,14 @@ function drawAntMid(ctx, sx, sy, angle, isQueen, carryFood) {
 }
 
 // ── Close zoom: detailed pixel ant ──────────────────────────────────────────
-function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame) {
-  const isQueen = role === ROLE.QUEEN;
-  const scale   = isQueen ? 2.2 : 1.0;
-  const bc = isQueen ? '#b03010' : '#1e1008';
-  const hc = isQueen ? '#d04018' : '#2a1c0a';
-  const ac = isQueen ? '#e05020' : '#2e200c'; // abdomen highlight
+function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame, carryDirt) {
+  const isQueen    = role === ROLE.QUEEN;
+  const isExplorer = role === ROLE.EXPLORER;
+  const isRogue    = role === ROLE.ROGUE;
+  const scale   = isQueen ? 2.2 : isRogue ? 1.3 : 1.0;
+  const bc = isQueen ? '#b03010' : isRogue ? '#8a4e10' : isExplorer ? '#3a3028' : '#1e1008';
+  const hc = isQueen ? '#d04018' : isRogue ? '#c06820' : isExplorer ? '#4a4038' : '#2a1c0a';
+  const ac = isQueen ? '#e05020' : isRogue ? '#a05818' : isExplorer ? '#4e4840' : '#2e200c';
   const lc = '#100a04';
 
   ctx.save();
@@ -113,12 +115,28 @@ function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame) {
     ctx.fillRect(8, -3, 1, 1);
   }
 
+  // Carrying dirt (heading to anthill)
+  if (carryDirt) {
+    ctx.fillStyle = '#7a6040';
+    ctx.fillRect(7, -3, 3, 3);
+    ctx.fillStyle = '#9a7850';
+    ctx.fillRect(8, -3, 1, 1);
+  }
+
   // Queen crown markings
   if (isQueen) {
     ctx.fillStyle = '#ffd040';
     ctx.fillRect(-7, -5, 2, 1);
     ctx.fillRect(-3, -4, 2, 1);
     ctx.fillRect( 1, -3, 2, 1);
+  }
+
+  // Rogue amber stripe — battle-scarred warrior marking
+  if (isRogue) {
+    ctx.fillStyle = '#f0a030';
+    ctx.fillRect(-7, -1, 14, 1); // amber racing stripe across the body
+    ctx.fillStyle = '#ff6020';
+    ctx.fillRect( 6, -2,  2, 1); // glowing eye
   }
 
   ctx.restore();
@@ -160,8 +178,8 @@ export function renderAnts(ctx, antSystem, queen, camera) {
     if (sx < -20 || sx > camera.cw + 20 || sy < -20 || sy > camera.ch + 20) continue;
 
     if      (lod === 'far')  drawAntFar(ctx, sx, sy, false);
-    else if (lod === 'mid')  drawAntMid(ctx, sx, sy, ant.angle, false, ant.carryFood);
-    else                     drawAntClose(ctx, sx, sy, ant.angle, ant.role, ant.carryFood, ant.animFrame);
+    else if (lod === 'mid')  drawAntMid(ctx, sx, sy, ant.angle, false, ant.carryFood || ant.carryDirt);
+    else                     drawAntClose(ctx, sx, sy, ant.angle, ant.role, ant.carryFood, ant.animFrame, ant.carryDirt);
   }
 
   // Queen

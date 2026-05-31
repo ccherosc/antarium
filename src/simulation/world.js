@@ -14,6 +14,7 @@ export class World {
     this.waterAmount = new Float32Array(W * H);
     this.pheromoneFood = new Float32Array(W * H);
     this.pheromoneHome = new Float32Array(W * H);
+    this.organics = new Float32Array(W * H); // 0–1, organic density in soil
 
     this.dirty = true;
     this.dirtyTiles = new Set();
@@ -207,6 +208,24 @@ export class World {
 
     // Horizontal gallery connecting nursery → center shaft → food store
     this._shaftH(NUR_X + 5, FS_X - 5, NUR_Y);
+
+    // Organic deposits — clusters of dark organic matter in the soil
+    // Explorers seek these out and convert them to underground food deposits
+    for (let c = 0; c < 14; c++) {
+      const ocx = GT + 6 + Math.floor(Math.random() * (W - GT * 2 - 12));
+      const ocy = SR + 6 + Math.floor(Math.random() * (H - SR - GT - 10));
+      const or  = 3 + Math.floor(Math.random() * 4);
+      for (let dy = -or; dy <= or; dy++) {
+        for (let dx = -or; dx <= or; dx++) {
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > or) continue;
+          const tx = ocx + dx, ty = ocy + dy;
+          if (tx < GT + 1 || tx >= W - GT - 1 || ty <= SR + 1 || ty >= H - GT - 1) continue;
+          const i = this.idx(tx, ty);
+          this.organics[i] = Math.min(1, this.organics[i] + (1 - d / or) * (0.5 + Math.random() * 0.5));
+        }
+      }
+    }
 
     // Surface food
     for (let i = 0; i < 8; i++) {
@@ -451,6 +470,60 @@ export class World {
       if (this.isOpen(x + dx, y + dy)) result.push([x + dx, y + dy]);
     }
     return result;
+  }
+
+  // Place one displaced-soil tile above the surface entrance (anthill growth)
+  _depositAnthill() {
+    const CX = CONFIG.COLONY_X;
+    const SR = CONFIG.SURFACE_ROW;
+    const GT = CONFIG.GLASS_THICKNESS;
+    // Bell-curve spread: sum of 3 uniforms → triangular distribution centred on entrance
+    const dx = Math.floor((Math.random() + Math.random() + Math.random() - 1.5) * 5);
+    const tx = Math.max(GT + 1, Math.min(this.width - GT - 2, CX + dx));
+    // Stack upward from just above surface — find the bottom-most AIR tile
+    for (let y = SR - 1; y >= GT + 1; y--) {
+      if (this.get(tx, y) === TILE.AIR) {
+        this.set(tx, y, TILE.ANTHILL);
+        return;
+      }
+    }
+  }
+
+  // Explorer-only: if tile has high organics → food deposit, otherwise normal tunnel
+  convertToDeposit(x, y) {
+    const i = this.idx(x, y);
+    if (this.organics[i] > 0.30) {
+      this.set(x, y, TILE.FOOD);
+      this.foodAmount[i] = 70 + this.organics[i] * 130;
+      this.organics[i] = 0;
+      this.digProgress[i] = 0;
+      this.tunnelCount++;
+      logEvent('Underground food deposit discovered!');
+    } else {
+      this.convertToTunnel(x, y);
+    }
+  }
+
+  // Find the highest-organic soil tile adjacent to (ax,ay); fall back to any adjacent soil
+  findOrganicTarget(ax, ay) {
+    const ix = Math.floor(ax), iy = Math.floor(ay);
+    const dirs = [[-1,0],[1,0],[0,1],[0,-1],[-1,1],[1,1],[-1,-1],[1,-1]];
+    let best = null, bestScore = 0;
+    for (const [dx, dy] of dirs) {
+      const tx = ix + dx, ty = iy + dy;
+      if (this.get(tx, ty) !== TILE.SOIL || !this.hasOpenNeighbor(tx, ty)) continue;
+      const score = this.organics[this.idx(tx, ty)];
+      if (score > bestScore) { bestScore = score; best = [tx, ty]; }
+    }
+    // Always return something so explorers keep tunnelling even without organics nearby
+    if (!best) {
+      const shuffled = [...dirs].sort(() => Math.random() - 0.5);
+      for (const [dx, dy] of shuffled) {
+        const tx = ix + dx, ty = iy + dy;
+        if (this.get(tx, ty) === TILE.SOIL && this.hasOpenNeighbor(tx, ty)) return [tx, ty];
+      }
+    }
+    return best;
   }
 
   findNearestFood(x, y, radius) {

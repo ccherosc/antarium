@@ -1,6 +1,6 @@
 const STEPS = [
   {
-    title: 'Welcome to Antarium',
+    title: 'Welcome to Pixel Ants',
     body: 'Your queen — the red ant — is the heart of the colony. She lays eggs that hatch into workers, diggers, foragers, and nurses. Keep her fed and she keeps the colony growing.',
   },
   {
@@ -28,7 +28,7 @@ const MODE_STEPS = {
   },
 };
 
-const STORAGE_KEY = 'antarium_tutorial_done';
+const STORAGE_KEY = 'pixelants_tutorial_done';
 
 export class Tutorial {
   constructor() {

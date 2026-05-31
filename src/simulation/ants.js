@@ -4,10 +4,11 @@ import { GameState } from '../gameState.js';
 
 let nextId = 0;
 
-function randLifespan() {
+function randLifespan(role) {
   const base = CONFIG.ANT_LIFESPAN_MIN +
     Math.floor(Math.random() * (CONFIG.ANT_LIFESPAN_MAX - CONFIG.ANT_LIFESPAN_MIN));
-  return GameState.mode === 'screensaver' ? base * 3 : base;
+  const factor = GameState.mode === 'screensaver' ? 3 : 1;
+  return role === ROLE.ROGUE ? base * 2.5 * factor : base * factor;
 }
 
 function makeAnt(role, x, y) {
@@ -18,24 +19,27 @@ function makeAnt(role, x, y) {
     y: y + (Math.random() - 0.5) * 0.5,
     state: STATE.WANDERING,
     hunger: Math.random() * 15,
+    hp: 100,               // reduced by creature attacks; death at 0
     carryFood: false,
     carryWater: false,
+    carryDirt: false,      // true while hauling excavated soil to the surface anthill
     digTarget: null,
     digTicks: 0,
     restTicks: 0,
+    defenseTarget: null,   // creature being attacked (DEFENDING state)
+    feastTarget: null,     // dead creature being looted (FEASTING state)
+    rogueMission: null,    // current mission string (ROGUE role only)
+    missionTimer: 0,       // ticks until next mission change
     moveTick: Math.floor(Math.random() * CONFIG.ANT_MOVE_TICKS),
     animFrame: Math.floor(Math.random() * 3),
     animTimer: Math.floor(Math.random() * 8),
     angle: Math.random() * Math.PI * 2,
-    // Wander bias — refreshed periodically for organic movement
     wanderBias: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
     wanderChangeTimer: Math.floor(Math.random() * 60),
-    // Aging & death (improvement #1)
     age: 0,
-    maxAge: randLifespan(),
-    starvationTicks: 0,    // ticks at full hunger with no food
-    // Forager search (improvement #2)
-    searchTimer: 0,        // ticks spent looking for food; give up at FORAGER_TIMEOUT
+    maxAge: randLifespan(role),
+    starvationTicks: 0,
+    searchTimer: 0,
   };
 }
 
@@ -48,16 +52,18 @@ export class AntSystem {
     this.recentDeaths = 0; // deaths in last 500 ticks (for dashboard)
     this._deathResetTimer = 0;
     this._hatchCount = 0;
-    this.roleBoosts = { forager: 0, digger: 0, worker: 0, nurse: 0 };
+    this.roleBoosts = { forager: 0, digger: 0, worker: 0, nurse: 0, explorer: 0 };
+    this._rogueTimer = 0;
     this._spawn();
   }
 
   _spawn() {
     const { COLONY_X: CX, COLONY_Y: CY } = CONFIG;
-    for (let i = 0; i < CONFIG.INITIAL_WORKERS;  i++) this.ants.push(makeAnt(ROLE.WORKER,  CX + (Math.random()-0.5)*8, CY + (Math.random()-0.5)*6));
-    for (let i = 0; i < CONFIG.INITIAL_DIGGERS;  i++) this.ants.push(makeAnt(ROLE.DIGGER,  CX + (Math.random()-0.5)*6, CY + (Math.random()-0.5)*4));
-    for (let i = 0; i < CONFIG.INITIAL_FORAGERS; i++) this.ants.push(makeAnt(ROLE.FORAGER, CX + (Math.random()-0.5)*6, CY - 5 + Math.random()*3));
-    for (let i = 0; i < CONFIG.INITIAL_NURSES;   i++) this.ants.push(makeAnt(ROLE.NURSE,   CX - 14 + (Math.random()-0.5)*4, CY + 8 + Math.random()*3));
+    for (let i = 0; i < CONFIG.INITIAL_WORKERS;   i++) this.ants.push(makeAnt(ROLE.WORKER,   CX + (Math.random()-0.5)*8, CY + (Math.random()-0.5)*6));
+    for (let i = 0; i < CONFIG.INITIAL_DIGGERS;   i++) this.ants.push(makeAnt(ROLE.DIGGER,   CX + (Math.random()-0.5)*6, CY + (Math.random()-0.5)*4));
+    for (let i = 0; i < CONFIG.INITIAL_FORAGERS;  i++) this.ants.push(makeAnt(ROLE.FORAGER,  CX + (Math.random()-0.5)*6, CY - 5 + Math.random()*3));
+    for (let i = 0; i < CONFIG.INITIAL_NURSES;    i++) this.ants.push(makeAnt(ROLE.NURSE,    CX - 14 + (Math.random()-0.5)*4, CY + 8 + Math.random()*3));
+    for (let i = 0; i < CONFIG.INITIAL_EXPLORERS; i++) this.ants.push(makeAnt(ROLE.EXPLORER, CX + (Math.random()-0.5)*10, CY + (Math.random()-0.5)*8));
 
     for (let i = 0; i < CONFIG.INITIAL_EGGS; i++) {
       this.eggs.push({
@@ -69,8 +75,19 @@ export class AntSystem {
     }
   }
 
-  update(deltaMs, queen) {
+  update(deltaMs, queen, opts = {}) {
     const world = this.world;
+    this._creatures = opts.creatures || null; // creature system ref for DEFENDING/FEASTING
+
+    // ── Rogue ant rare spontaneous spawn ────────────────────────────────────
+    if (++this._rogueTimer >= 1600) {
+      this._rogueTimer = 0;
+      const rogueCount = this.ants.filter(a => a.role === ROLE.ROGUE).length;
+      if (rogueCount < 2 && Math.random() < 0.14) {
+        this.ants.push(makeAnt(ROLE.ROGUE, CONFIG.COLONY_X + (Math.random()-0.5)*6, CONFIG.COLONY_Y));
+        logEvent('A rogue ant emerges — chaos incoming!');
+      }
+    }
 
     // ── Recent-deaths window reset ──────────────────────────────────────────
     this._deathResetTimer++;
@@ -88,17 +105,20 @@ export class AntSystem {
         const wd = 25 * bm[this.roleBoosts.digger];
         const ww = 25 * bm[this.roleBoosts.worker];
         const wn = 20 * bm[this.roleBoosts.nurse];
-        const wt = wf + wd + ww + wn;
+        const we = 10 * bm[this.roleBoosts.explorer];
+        const wt = wf + wd + ww + wn + we;
         const rv = Math.random() * wt;
-        const role = rv < wf           ? ROLE.FORAGER
-                   : rv < wf + wd      ? ROLE.DIGGER
-                   : rv < wf + wd + ww ? ROLE.WORKER
-                   :                     ROLE.NURSE;
+        const role = rv < wf                ? ROLE.FORAGER
+                   : rv < wf + wd           ? ROLE.DIGGER
+                   : rv < wf + wd + ww      ? ROLE.WORKER
+                   : rv < wf + wd + ww + wn ? ROLE.NURSE
+                   :                          ROLE.EXPLORER;
         this.ants.push(makeAnt(role, egg.x, egg.y));
         this._hatchCount++;
         if (this._hatchCount % 3 === 1) {
-          const rn = role === ROLE.FORAGER ? 'forager' : role === ROLE.DIGGER ? 'digger'
-                   : role === ROLE.WORKER  ? 'worker'  : 'nurse';
+          const rn = role === ROLE.FORAGER  ? 'forager'  : role === ROLE.DIGGER ? 'digger'
+                   : role === ROLE.WORKER   ? 'worker'   : role === ROLE.NURSE  ? 'nurse'
+                   :                          'explorer';
           logEvent(`Egg hatched — new ${rn}`);
         }
       }
@@ -115,6 +135,9 @@ export class AntSystem {
       if (ant.age >= ant.maxAge) {
         this._killAnt(i); continue;
       }
+
+      // Combat death (creature attacks)
+      if ((ant.hp ?? 100) <= 0) { this._killAnt(i); continue; }
 
       // Starvation death (disabled in screensaver — food always topped up)
       if (GameState.mode !== 'screensaver' && ant.hunger >= 99 && world.foodStore <= 0) {
@@ -226,6 +249,62 @@ export class AntSystem {
             ant.state = STATE.SEEKING_FOOD; ant.searchTimer = 0;
           }
 
+        } else if (ant.role === ROLE.ROGUE) {
+          // Change mission randomly — rogues ignore colony stress entirely
+          if (!ant.rogueMission || --ant.missionTimer <= 0) {
+            const pick = Math.random();
+            ant.rogueMission = pick < 0.30 ? 'deep'
+                             : pick < 0.55 ? 'chaos'
+                             : pick < 0.75 ? 'surface'
+                             :               'far';
+            ant.missionTimer = 90 + Math.floor(Math.random() * 130);
+          }
+          switch (ant.rogueMission) {
+            case 'deep':
+              ant.wanderBias = { x: (Math.random()-0.5)*0.3, y: 3.0 };
+              if (Math.random() < 0.14) {
+                const dt = world.findDigTarget(ant.x, ant.y);
+                if (dt) { ant.digTarget = dt; ant.state = STATE.DIGGING; ant.digTicks = 0; }
+              }
+              break;
+            case 'chaos':
+              if (Math.random() < 0.11) {
+                const dt = world.findDigTarget(ant.x, ant.y);
+                if (dt) { ant.digTarget = dt; ant.state = STATE.DIGGING; ant.digTicks = 0; }
+              }
+              break;
+            case 'surface':
+              ant.wanderBias = { x: Math.random() < 0.5 ? 3.0 : -3.0, y: -2.0 };
+              break;
+            case 'far':
+              ant.state = STATE.SEEKING_FOOD;
+              ant.searchTimer = 0;
+              break;
+          }
+          // Rogues also fight creatures they encounter
+          if (this._creatures) {
+            const threat = this._creatures.getNearestThreat(ant.x, ant.y, 16);
+            if (threat && Math.random() < 0.06) {
+              ant.state = STATE.DEFENDING;
+              ant.defenseTarget = threat;
+            }
+          }
+
+        } else if (ant.role === ROLE.EXPLORER) {
+          // Explorers probe adjacent soil for organic deposits; otherwise just tunnel randomly
+          if (Math.random() < 0.09) {
+            const dt = world.findOrganicTarget(ant.x, ant.y);
+            if (dt) { ant.digTarget = dt; ant.state = STATE.DIGGING; ant.digTicks = 0; }
+          }
+          // Strong urge to roam away from queen — bias wander outward periodically
+          if (Math.random() < 0.004) {
+            ant.wanderBias = {
+              x: (ant.x - CONFIG.COLONY_X) * 0.08 + (Math.random() - 0.5),
+              y: (ant.y - CONFIG.COLONY_Y) * 0.04 + 0.5,
+            };
+            ant.wanderChangeTimer = 50 + Math.floor(Math.random() * 60);
+          }
+
         } else { // ROLE.WORKER
           if (stress < 0.4 && Math.random() < 0.007) {
             const dt = world.findDigTarget(ant.x, ant.y);
@@ -319,7 +398,6 @@ export class AntSystem {
 
       // ── DIGGING ──────────────────────────────────────────────────────────
       case STATE.DIGGING: {
-        // Abandon dig if colony becomes stressed
         if (stress > 0.65 || !ant.digTarget) { ant.digTarget = null; ant.state = STATE.WANDERING; break; }
         const [dtx, dty] = ant.digTarget;
         if (world.get(dtx, dty) !== TILE.SOIL) { ant.digTarget = null; ant.state = STATE.WANDERING; break; }
@@ -327,9 +405,79 @@ export class AntSystem {
         ant.digTicks += GameState.mode === 'screensaver' ? 2 : 1;
         world.digProgress[world.idx(dtx, dty)] = ant.digTicks / CONFIG.DIG_TICKS;
         if (ant.digTicks >= CONFIG.DIG_TICKS) {
-          world.convertToTunnel(dtx, dty);
+          if (ant.role === ROLE.EXPLORER) {
+            world.convertToDeposit(dtx, dty);   // may become food if organic-rich
+          } else {
+            world.convertToTunnel(dtx, dty);
+            // Diggers/workers carry dirt to surface ~60% of the time
+            if ((ant.role === ROLE.DIGGER || ant.role === ROLE.WORKER) && Math.random() < 0.60) {
+              ant.carryDirt = true;
+              ant.digTarget = null;
+              ant.state = STATE.DUMPING_DIRT;
+              break;
+            }
+          }
           ant.digTarget = null;
           ant.state = STATE.WANDERING;
+        }
+        break;
+      }
+
+      // ── DUMPING DIRT (carry excavated soil to surface anthill) ────────────
+      case STATE.DUMPING_DIRT: {
+        // Strong upward + entrance bias so ants reliably reach the surface
+        ant.wanderBias = {
+          x: (CONFIG.COLONY_X - ant.x) * 0.06,
+          y: -2.8,
+        };
+        this._doWander(ant, world);
+        if (ant.y <= CONFIG.SURFACE_ROW + 1) {
+          world._depositAnthill();
+          ant.carryDirt = false;
+          ant.state = STATE.WANDERING;
+          ant.wanderBias = { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 };
+        }
+        break;
+      }
+
+      // ── DEFENDING (rush surface creature and fight) ───────────────────────
+      case STATE.DEFENDING: {
+        const creatures = this._creatures;
+        const tgt = ant.defenseTarget;
+        if (!creatures || !tgt || tgt.dead) {
+          ant.defenseTarget = null;
+          // Check for fresh corpse to feast on
+          if (creatures) {
+            const corpse = creatures.getNearestCorpse(ant.x, ant.y, 22);
+            if (corpse) { ant.feastTarget = corpse; ant.state = STATE.FEASTING; break; }
+          }
+          ant.state = STATE.WANDERING;
+          break;
+        }
+        this._moveToward(ant, world, tgt.x, tgt.y - 0.3, 1.8);
+        if (Math.hypot(ant.x - tgt.x, ant.y - tgt.y) < 1.5) {
+          // Rogue ants deal bonus damage — they're fighters
+          creatures.damage(tgt, ant.role === ROLE.ROGUE ? 3 : 1);
+        }
+        break;
+      }
+
+      // ── FEASTING (loot creature corpse, carry food underground) ──────────
+      case STATE.FEASTING: {
+        const creatures = this._creatures;
+        const corpse = ant.feastTarget;
+        if (!creatures || !corpse || corpse.foodChunks <= 0) {
+          ant.feastTarget = null;
+          ant.carryFood = false;
+          ant.state = STATE.WANDERING;
+          break;
+        }
+        this._moveToward(ant, world, corpse.x, corpse.y - 0.3, 1.5);
+        if (Math.hypot(ant.x - corpse.x, ant.y - corpse.y) < 1.5 && corpse.foodChunks > 0) {
+          corpse.foodChunks--;
+          ant.carryFood = true;
+          ant.feastTarget = null;
+          ant.state = STATE.RETURNING;
         }
         break;
       }
@@ -487,12 +635,14 @@ export class AntSystem {
   get eggCount()   { return this.eggs.length; }
 
   get roleCounts() {
-    const c = { forager: 0, digger: 0, worker: 0, nurse: 0 };
+    const c = { forager: 0, digger: 0, worker: 0, nurse: 0, explorer: 0, rogue: 0 };
     for (const a of this.ants) {
-      if      (a.role === ROLE.FORAGER) c.forager++;
-      else if (a.role === ROLE.DIGGER)  c.digger++;
-      else if (a.role === ROLE.WORKER)  c.worker++;
-      else if (a.role === ROLE.NURSE)   c.nurse++;
+      if      (a.role === ROLE.FORAGER)   c.forager++;
+      else if (a.role === ROLE.DIGGER)    c.digger++;
+      else if (a.role === ROLE.WORKER)    c.worker++;
+      else if (a.role === ROLE.NURSE)     c.nurse++;
+      else if (a.role === ROLE.EXPLORER)  c.explorer++;
+      else if (a.role === ROLE.ROGUE)     c.rogue++;
     }
     return c;
   }

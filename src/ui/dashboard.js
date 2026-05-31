@@ -69,7 +69,7 @@ export class Dashboard {
     if (antSystem) {
       const rc  = antSystem.roleCounts;
       const pop = Math.max(1, antSystem.population);
-      const roles = ['forager', 'digger', 'worker', 'nurse'];
+      const roles = ['forager', 'digger', 'worker', 'nurse', 'explorer'];
       for (const r of roles) {
         const cnt = rc[r];
         const pct = (cnt / pop) * 100;
