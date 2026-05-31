@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Antarium — Pixel Ant Farm</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="dashboard">
+      <div class="dash-title">ANTARIUM</div>
+      <div class="dash-mode" id="stat-mode">SCREENSAVER</div>
+      <div class="dash-day" id="stat-day">DAY 1</div>
+
+      <div class="dash-section">
+        <div class="dash-label">COLONY STATUS</div>
+        <div class="dash-row"><span>Population</span><span id="stat-population">0</span></div>
+        <div class="dash-row"><span>Eggs</span><span id="stat-eggs">0</span></div>
+        <div class="dash-row"><span>Queen Health</span><span id="stat-queen-health">100%</span></div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-queen-health" style="width:100%"></div></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-label">RESOURCES</div>
+        <div class="dash-row"><span>Food Store</span><span id="stat-food">200</span></div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-food" style="width:20%"></div></div>
+        <div class="dash-row"><span>Water Store</span><span id="stat-water">200</span></div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-water" style="width:20%"></div></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-label">COLONY VITALS</div>
+        <div class="dash-row"><span>Vitality</span><span id="stat-vitality">100%</span></div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-vitality" style="width:100%"></div></div>
+        <div class="dash-row"><span>Happiness</span><span id="stat-happiness">100%</span></div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-happiness" style="width:100%"></div></div>
+        <div class="dash-row"><span>Birthrate</span><span id="stat-birthrate">0%</span></div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-birthrate" style="width:0%"></div></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-label">EXCAVATION</div>
+        <div class="dash-row"><span>Tunnels Dug</span><span id="stat-tunnels">0</span></div>
+        <div class="dash-row"><span>Chambers</span><span id="stat-chambers">0</span></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-label">TOOLS</div>
+        <div class="controls">
+          <button class="tool-btn active" data-tool="food" title="Click in ant farm to drop food">🍯 Food</button>
+          <button class="tool-btn" data-tool="water" title="Click in ant farm to add water">💧 Water</button>
+          <button class="tool-btn" data-tool="inspect" title="Click any tile for info">🔍 Inspect</button>
+          <button class="tool-btn" id="btn-pher-toggle" title="Show pheromone trails">🧪 Trails</button>
+        </div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-label">ROLES</div>
+        <div class="dash-row">
+          <span>Forager</span>
+          <span id="stat-role-forager">0</span>
+          <button class="boost-btn" data-role="forager" title="No boost">+</button>
+        </div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-role-forager" style="width:30%;background:#8a6a20"></div></div>
+        <div class="dash-row">
+          <span>Digger</span>
+          <span id="stat-role-digger">0</span>
+          <button class="boost-btn" data-role="digger" title="No boost">+</button>
+        </div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-role-digger" style="width:20%;background:#7a5030"></div></div>
+        <div class="dash-row">
+          <span>Worker</span>
+          <span id="stat-role-worker">0</span>
+          <button class="boost-btn" data-role="worker" title="No boost">+</button>
+        </div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-role-worker" style="width:25%;background:#4a6840"></div></div>
+        <div class="dash-row">
+          <span>Nurse</span>
+          <span id="stat-role-nurse">0</span>
+          <button class="boost-btn" data-role="nurse" title="No boost">+</button>
+        </div>
+        <div class="stat-bar-wrap"><div class="stat-bar" id="bar-role-nurse" style="width:15%;background:#406878"></div></div>
+      </div>
+
+      <div class="dash-section save-section">
+        <div class="save-row">
+          <button class="save-btn" id="btn-save">Save Colony</button>
+          <span class="save-status" id="save-status"></span>
+        </div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-label">CONDITIONS</div>
+        <div class="slider-row">
+          <label>Dig Speed</label>
+          <input type="range" id="ctrl-dig-rate" min="0" max="100" value="50">
+        </div>
+        <div class="slider-row">
+          <label>Birthrate</label>
+          <input type="range" id="ctrl-birth-rate" min="0" max="100" value="50">
+        </div>
+        <div class="slider-row">
+          <label>Sim Speed</label>
+          <input type="range" id="ctrl-speed" min="0.5" max="5" step="0.5" value="2">
+        </div>
+      </div>
+
+      <div id="inspect-panel" class="hidden">
+        <div class="dash-label">TILE INSPECT</div>
+        <div id="inspect-content"></div>
+      </div>
+
+      <div class="dash-section" id="event-log-section">
+        <div class="dash-label">COLONY LOG</div>
+        <div id="event-log"></div>
+      </div>
+
+      <div class="sim-tick-row">tick: <span id="sim-tick">0</span></div>
+
+      <div class="dash-section" style="font-size:9px; color:var(--text2); line-height:1.7; opacity:0.7;">
+        <div>🖱 Scroll: zoom in/out</div>
+        <div>🖱 Drag: pan camera</div>
+        <div>📱 Pinch: mobile zoom</div>
+        <div>Click canvas: use tool</div>
+      </div>
+    </div>
+
+    <div id="toolbar">
+      <button class="zoom-btn" id="btn-zoom-in" title="Zoom in">+</button>
+      <button class="zoom-btn" id="btn-zoom-out" title="Zoom out">−</button>
+      <button class="zoom-btn" id="btn-zoom-reset" title="Fit world">⌂</button>
+    </div>
+
+    <div id="hint">Scroll to zoom · Drag to pan · Click to feed</div>
+
+    <!-- Mode selector — shown before game starts -->
+    <div id="mode-select">
+
+      <div id="ms-pick">
+        <div class="ms-title">ANTARIUM</div>
+        <div class="ms-sub">pixel ant colony simulation</div>
+        <div class="ms-options">
+          <button class="ms-btn" id="btn-mode-screensaver">
+            <div class="ms-btn-name">Screensaver</div>
+            <div class="ms-btn-desc">Watch your colony thrive indefinitely. The queen cannot die. Perfect for leaving on display.</div>
+          </button>
+          <button class="ms-btn ms-btn-survival" id="btn-mode-survival">
+            <div class="ms-btn-name">Survival</div>
+            <div class="ms-btn-desc">Keep your colony alive. The queen can perish. Food runs out. How many days can you last?</div>
+          </button>
+        </div>
+      </div>
+
+      <div id="ms-confirm" class="hidden">
+        <div class="ms-title">ANTARIUM</div>
+        <div class="ms-resume-label">Saved colony found</div>
+        <div class="ms-resume-info" id="ms-resume-info"></div>
+        <div class="ms-options">
+          <button class="ms-btn" id="btn-resume">
+            <div class="ms-btn-name">Resume Colony</div>
+            <div class="ms-btn-desc">Continue where you left off.</div>
+          </button>
+          <button class="ms-btn" id="btn-new-colony">
+            <div class="ms-btn-name">New Colony</div>
+            <div class="ms-btn-desc">Start fresh. Your saved colony will be lost.</div>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Game over — survival mode only -->
+    <div id="gameover" class="hidden">
+      <div class="go-box">
+        <div class="go-title">Colony Collapsed</div>
+        <div class="go-cause" id="go-cause"></div>
+        <div class="go-day" id="go-day">Survived Day 1</div>
+        <div class="go-stats" id="go-stats"></div>
+        <button class="go-btn" id="btn-restart">Try Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+  <script>
+    // Fade hint after 5 seconds
+    setTimeout(() => document.getElementById('hint')?.classList.add('fade'), 5000);
+    setTimeout(() => document.getElementById('hint')?.remove(), 7500);
+  </script>
+</body>
+</html>
