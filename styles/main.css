@@ -475,6 +475,92 @@ body {
 
 #hint.fade { opacity: 0; }
 
+/* Tutorial overlay */
+#tutorial {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(6,3,1,0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#tutorial.hidden { display: none; }
+
+.tut-box {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  padding: 32px 36px 24px;
+  max-width: 380px;
+  width: calc(100vw - 48px);
+  box-shadow: 0 0 40px rgba(0,0,0,0.8);
+}
+
+.tut-title {
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  color: var(--glow);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  text-shadow: 0 0 10px rgba(106,173,204,0.4);
+}
+
+.tut-body {
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.9;
+  min-height: 64px;
+}
+
+.tut-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.tut-dots { display: flex; gap: 6px; }
+
+.tut-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s;
+}
+.tut-dot.active { background: var(--glow); }
+
+.tut-actions { display: flex; gap: 8px; }
+
+.tut-btn-skip {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.tut-btn-skip:hover { border-color: var(--accent); color: var(--text); }
+
+.tut-btn-next {
+  padding: 6px 18px;
+  background: var(--accent);
+  border: 1px solid var(--accent2);
+  color: var(--text3);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.tut-btn-next:hover { background: #a07040; }
+
 /* Scrollbar for webkit */
 #dashboard::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 

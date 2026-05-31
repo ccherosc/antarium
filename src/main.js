@@ -11,6 +11,7 @@ import { Controls } from './ui/controls.js';
 import { GameState } from './gameState.js';
 import { logEvent } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
+import { Tutorial } from './ui/tutorial.js';
 
 const canvas = document.getElementById('gameCanvas');
 
@@ -139,6 +140,8 @@ document.getElementById('btn-save')?.addEventListener('click', () => {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 const shouldLoad = await pickMode();
+
+new Tutorial().show(GameState.mode);
 
 if (shouldLoad) {
   if (!loadGame(GameState.mode, { world, antSystem, queen, stats })) {

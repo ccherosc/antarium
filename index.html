@@ -3,7 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Antarium — Pixel Ant Farm</title>
+  <title>Antarium — Pixel Ant Colony</title>
+  <meta name="description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Choose Screensaver mode to relax or Survival mode to keep the queen alive.">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0e0a06">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Antarium — Pixel Ant Colony">
+  <meta property="og:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Screensaver or survival — you choose.">
+  <meta property="og:image" content="og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Antarium — Pixel Ant Colony">
+  <meta name="twitter:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Screensaver or survival — you choose.">
+  <meta name="twitter:image" content="og-image.png">
+
   <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
@@ -170,6 +192,21 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Tutorial overlay — shown once on first visit -->
+    <div id="tutorial" class="hidden">
+      <div class="tut-box">
+        <div class="tut-title" id="tut-title"></div>
+        <div class="tut-body" id="tut-body"></div>
+        <div class="tut-footer">
+          <div class="tut-dots" id="tut-dots"></div>
+          <div class="tut-actions">
+            <button class="tut-btn-skip" id="tut-skip">Skip</button>
+            <button class="tut-btn-next" id="tut-next">Next →</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Game over — survival mode only -->

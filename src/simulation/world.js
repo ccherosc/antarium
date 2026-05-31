@@ -24,6 +24,8 @@ export class World {
     this.chamberCount = 0;
     this.stress = 0;          // 0 = calm, 1 = critical — updated each tick
     this._foodRespawnTimer = 0;
+    this._digQueue = [];
+    this._digPlanTimer = 0;
 
     this._generate();
   }
@@ -93,36 +95,64 @@ export class World {
     }
   }
 
+  // Oval-shaped chamber (rx = half-width, ry = half-height)
+  _oval(cx, cy, rx, ry, type) {
+    const rxi = rx + 0.5, ryi = ry + 0.5;
+    for (let dy = -ry; dy <= ry; dy++) {
+      for (let dx = -rx; dx <= rx; dx++) {
+        if ((dx / rxi) * (dx / rxi) + (dy / ryi) * (dy / ryi) <= 1.0) {
+          this.set(cx + dx, cy + dy, type);
+        }
+      }
+    }
+  }
+
+  // Vertical shaft
+  _shaft(x, y1, y2, type = TILE.TUNNEL) {
+    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) this.set(x, y, type);
+  }
+
+  // Horizontal shaft
+  _shaftH(x1, x2, y, type = TILE.TUNNEL) {
+    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) this.set(x, y, type);
+  }
+
+  // Diagonal tunnel — steps x and y simultaneously until both reach target
+  _diagonal(x1, y1, x2, y2, type = TILE.TUNNEL) {
+    let x = x1, y = y1;
+    while (x !== x2 || y !== y2) {
+      this.set(x, y, type);
+      if (x !== x2) x += x < x2 ? 1 : -1;
+      if (y !== y2) y += y < y2 ? 1 : -1;
+    }
+    this.set(x2, y2, type);
+  }
+
   _generate() {
     const W = this.width, H = this.height;
     const SR = CONFIG.SURFACE_ROW;
     const CX = CONFIG.COLONY_X;
     const CY = CONFIG.COLONY_Y;
+    const GT = CONFIG.GLASS_THICKNESS;
 
-    // Fill with soil
     this._fill(TILE.SOIL);
-
-    // Randomize hardness
     for (let i = 0; i < this.hardness.length; i++) {
       this.hardness[i] = 40 + Math.random() * 60;
     }
 
-    // Top rows: air
+    // Air above surface
     for (let y = 0; y < SR; y++) {
       for (let x = 0; x < W; x++) {
         this.tiles[this.idx(x, y)] = TILE.AIR;
         this.hardness[this.idx(x, y)] = 0;
       }
     }
-
-    // Surface row
     for (let x = 0; x < W; x++) {
-      this.tiles[this.idx(x, SR)] = TILE.SURFACE;
+      this.tiles[this.idx(x, SR)]     = TILE.SURFACE;
       this.tiles[this.idx(x, SR + 1)] = TILE.SURFACE;
     }
 
     // Glass border
-    const GT = CONFIG.GLASS_THICKNESS;
     for (let y = 0; y < H; y++) {
       for (let gx = 0; gx < GT; gx++) {
         this.set(gx, y, TILE.GLASS);
@@ -136,63 +166,58 @@ export class World {
       }
     }
 
-    // Center shaft — surface down through main corridor into queen chamber
-    const entryX = CX;
-    for (let y = SR + 2; y <= CY - 3; y++) {   // y16 → y62 (queen chamber top)
-      this.set(entryX, y, TILE.TUNNEL);
-    }
+    // ── Entrance shaft — narrow 1-tile drop from surface ──────────────────
+    this._shaft(CX, SR + 2, SR + 12);
 
-    // Side shafts — surface through upper chambers all the way to nursery/food storage
-    for (let y = SR + 2; y <= CY + 5; y++) {   // y16 → y70 (nursery/food chamber top)
-      this.set(CX - 15, y, TILE.TUNNEL);
-      this.set(CX + 15, y, TILE.TUNNEL);
-    }
+    // ── Foyer — small junction chamber just below the surface ─────────────
+    //    Ant farm hallmark: ants spill out here when food arrives
+    const FOYER_Y = SR + 14;                           // y = 28
+    this._oval(CX, FOYER_Y, 3, 2, TILE.CHAMBER);
 
-    // Main horizontal corridor
-    this._rect(CX - 18, CY - 10, 36, 2, TILE.TUNNEL);
+    // ── Upper-left arm — diagonal branch to nursery area ──────────────────
+    const UL_X = CX - 22, UL_Y = FOYER_Y + 21;       // (98, 49)
+    this._diagonal(CX - 1, FOYER_Y + 3, UL_X, UL_Y);
+    this._oval(UL_X, UL_Y, 4, 3, TILE.CHAMBER);       // upper-left chamber
 
-    // Queen chamber (heart of colony)
-    this._chamber(CX, CY, 10, 7);
+    // ── Upper-right arm — diagonal branch to food cache ───────────────────
+    const UR_X = CX + 22, UR_Y = FOYER_Y + 21;       // (142, 49)
+    this._diagonal(CX + 1, FOYER_Y + 3, UR_X, UR_Y);
+    this._oval(UR_X, UR_Y, 4, 3, TILE.CHAMBER);       // upper-right chamber
 
-    // Nursery chamber (left-down)
-    this._chamber(CX - 14, CY + 8, 9, 6);
-    this._tunnel(CX - 5, CY + 3, CX - 10, CY + 8);
+    // ── Center shaft — straight drop from foyer to queen ──────────────────
+    this._shaft(CX, FOYER_Y + 3, CY - 5);
 
-    // Food storage chamber (right-down)
-    this._chamber(CX + 14, CY + 8, 9, 6);
-    this._tunnel(CX + 5, CY + 3, CX + 10, CY + 8);
+    // ── Queen chamber — large oval, heart of the colony ───────────────────
+    this._oval(CX, CY, 6, 4, TILE.CHAMBER);
 
-    // Rest chamber (upper-left)
-    this._chamber(CX - 16, CY - 16, 7, 5);
-    this._tunnel(CX - 14, CY - 9, CX - 13, CY - 14);
+    // ── Nursery wing — lower-left, near nurse/egg spawn point ─────────────
+    //    ants.js spawns nurses at (CX-14, CY+8) = (106,73), so keep it close
+    const NUR_X = CX - 20, NUR_Y = CY + 13;          // (100, 78)
+    this._diagonal(CX - 5, CY + 5, NUR_X, NUR_Y);
+    this._oval(NUR_X, NUR_Y, 5, 3, TILE.CHAMBER);     // nursery
 
-    // Exploration chamber (upper-right)
-    this._chamber(CX + 16, CY - 16, 7, 5);
-    this._tunnel(CX + 14, CY - 9, CX + 13, CY - 14);
+    // ── Food store wing — lower-right, mirror of nursery ──────────────────
+    const FS_X = CX + 20, FS_Y = CY + 13;            // (140, 78)
+    this._diagonal(CX + 5, CY + 5, FS_X, FS_Y);
+    this._oval(FS_X, FS_Y, 5, 3, TILE.CHAMBER);       // food storage
 
-    // Left branch of main corridor extends further
-    this._rect(CX - 30, CY - 7, 12, 2, TILE.TUNNEL);
+    // ── Deep central shaft + gallery ──────────────────────────────────────
+    this._shaft(CX, CY + 5, CY + 25);
+    this._oval(CX, CY + 28, 5, 3, TILE.CHAMBER);      // deep gallery (120, 93)
 
-    // Right branch
-    this._rect(CX + 18, CY - 7, 12, 2, TILE.TUNNEL);
+    // Horizontal gallery connecting nursery → center shaft → food store
+    this._shaftH(NUR_X + 5, FS_X - 5, NUR_Y);
 
-    // Secondary tunnels going deeper
-    this._tunnel(CX - 8, CY + 5, CX - 8, CY + 18);
-    this._tunnel(CX + 8, CY + 5, CX + 8, CY + 18);
-    this._tunnel(CX - 8, CY + 18, CX + 8, CY + 18);
-    this._chamber(CX, CY + 22, 8, 5);
-    this._tunnel(CX, CY + 18, CX, CY + 20);
-
-    // Some scattered food on surface
+    // Surface food
     for (let i = 0; i < 8; i++) {
       const fx = GT + 4 + Math.floor(Math.random() * (W - GT * 2 - 8));
       this.set(fx, SR, TILE.FOOD);
       this.foodAmount[this.idx(fx, SR)] = 60 + Math.random() * 40;
     }
 
-    // Count tunnels and chambers
     this._recalcStats();
-    this.dirtyTiles.clear(); // force full redraw on first render (soil was set via _fill, not set())
+    this._updateDigPlan();                             // seed initial dig plan
+    this.dirtyTiles.clear();
     this.dirty = true;
   }
 
@@ -204,6 +229,78 @@ export class World {
     }
     this.tunnelCount = t;
     this.chamberCount = Math.round(c / 9);
+  }
+
+  // Populate the dig queue with structured work: shafts, angled arms, and oval chambers.
+  // Diggers consume one tile at a time; this runs periodically so the queue stays fresh.
+  _updateDigPlan() {
+    if (this._digQueue.length > 28) return;
+
+    const GT = CONFIG.GLASS_THICKNESS;
+    const SR = CONFIG.SURFACE_ROW;
+
+    // Find frontier tiles: open cells with soil on at least 2 cardinal sides
+    const tips = [];
+    for (let y = SR + 4; y < this.height - GT - 4; y++) {
+      for (let x = GT + 3; x < this.width - GT - 3; x++) {
+        if (!this.isOpen(x, y)) continue;
+        let soilAdj = 0;
+        if (this.get(x,   y + 1) === TILE.SOIL) soilAdj++;
+        if (this.get(x,   y - 1) === TILE.SOIL) soilAdj++;
+        if (this.get(x - 1, y)   === TILE.SOIL) soilAdj++;
+        if (this.get(x + 1, y)   === TILE.SOIL) soilAdj++;
+        if (soilAdj >= 2) tips.push([x, y]);
+      }
+    }
+    if (!tips.length) return;
+
+    // Pick a handful of random frontier tiles and plan work from them
+    const chosen = tips.sort(() => Math.random() - 0.5).slice(0, 4);
+    for (const [tx, ty] of chosen) {
+      const r = Math.random();
+
+      if (r < 0.42) {
+        // ── Straight-down shaft: the backbone of every ant farm ──────────
+        const len = 5 + Math.floor(Math.random() * 9);
+        for (let i = 1; i <= len; i++) {
+          const ny = ty + i;
+          if (ny >= this.height - GT - 2) break;
+          if (this.get(tx, ny) === TILE.SOIL) this._digQueue.push([tx, ny]);
+          else if (!this.isOpen(tx, ny)) break;
+        }
+
+      } else if (r < 0.72) {
+        // ── Angled tunnel: zigzag drift creating diagonal corridors ──────
+        const sx = Math.random() < 0.5 ? -1 : 1;
+        const len = 5 + Math.floor(Math.random() * 9);
+        let x = tx, y = ty;
+        for (let i = 0; i < len; i++) {
+          // Alternate: one step straight down, one step diagonal
+          y += 1;
+          if (i % 2 === 1) x += sx;
+          if (x < GT + 2 || x >= this.width - GT - 2 || y >= this.height - GT - 2) break;
+          if (this.get(x, y) === TILE.SOIL) this._digQueue.push([x, y]);
+        }
+
+      } else {
+        // ── Oval chamber: widen the tunnel into a room ───────────────────
+        const offX = (Math.random() < 0.5 ? -1 : 1) * Math.floor(1 + Math.random() * 3);
+        const cx = tx + offX;
+        const cy = ty + 3 + Math.floor(Math.random() * 4);
+        const rx = 3 + Math.floor(Math.random() * 3); // half-width 3–5
+        const ry = 2 + Math.floor(Math.random() * 2); // half-height 2–3
+        const rxi = rx + 0.5, ryi = ry + 0.5;
+        for (let dy = -ry; dy <= ry; dy++) {
+          for (let dx = -rx; dx <= rx; dx++) {
+            if ((dx / rxi) * (dx / rxi) + (dy / ryi) * (dy / ryi) > 1.0) continue;
+            const qx = cx + dx, qy = cy + dy;
+            if (qx < GT + 2 || qx >= this.width - GT - 2) continue;
+            if (qy < SR + 4  || qy >= this.height - GT - 2) continue;
+            if (this.get(qx, qy) === TILE.SOIL) this._digQueue.push([qx, qy]);
+          }
+        }
+      }
+    }
   }
 
   convertToTunnel(x, y) {
@@ -272,6 +369,11 @@ export class World {
   update(deltaMs, sim) {
     const decay = CONFIG.FOOD_DECAY_RATE * deltaMs * 0.001;
     const evap = CONFIG.WATER_EVAP_RATE * deltaMs * 0.001;
+
+    if (++this._digPlanTimer >= 80) {
+      this._digPlanTimer = 0;
+      this._updateDigPlan();
+    }
 
     for (let i = 0; i < this.tiles.length; i++) {
       if (this.tiles[i] === TILE.FOOD) {
@@ -383,15 +485,35 @@ export class World {
     return best;
   }
 
-  findDigTarget(x, y) {
-    const dirs = [[-1,0],[1,0],[0,1],[0,-1],[-1,1],[1,1],[-1,-1],[1,-1]];
-    // Prefer downward digging
-    const shuffled = [...dirs].sort(() => Math.random() - 0.4);
-    for (const [dx, dy] of shuffled) {
-      const tx = Math.floor(x) + dx, ty = Math.floor(y) + dy;
-      if (this.get(tx, ty) === TILE.SOIL && this.hasOpenNeighbor(tx, ty)) {
-        return [tx, ty];
+  findDigTarget(ax, ay) {
+    // Evict stale queue entries
+    for (let i = this._digQueue.length - 1; i >= 0; i--) {
+      const [qx, qy] = this._digQueue[i];
+      if (this.get(qx, qy) !== TILE.SOIL || !this.hasOpenNeighbor(qx, qy)) {
+        this._digQueue.splice(i, 1);
       }
+    }
+
+    // Pick the nearest planned site within reach, biased toward deeper targets
+    let best = null, bestScore = -Infinity;
+    for (const [qx, qy] of this._digQueue) {
+      const d = Math.abs(ax - qx) + Math.abs(ay - qy);
+      if (d > 35) continue;
+      const score = -d + Math.max(0, qy - ay) * 0.7;
+      if (score > bestScore) { bestScore = score; best = [qx, qy]; }
+    }
+
+    if (best) {
+      const idx = this._digQueue.findIndex(([x, y]) => x === best[0] && y === best[1]);
+      if (idx >= 0) this._digQueue.splice(idx, 1);
+      return best;
+    }
+
+    // Fallback: any adjacent diggable tile, weighted downward
+    const dirs = [[0,1],[0,1],[-1,1],[1,1],[-1,0],[1,0],[0,-1]];
+    for (const [dx, dy] of [...dirs].sort(() => Math.random() - 0.38)) {
+      const tx = Math.floor(ax) + dx, ty = Math.floor(ay) + dy;
+      if (this.get(tx, ty) === TILE.SOIL && this.hasOpenNeighbor(tx, ty)) return [tx, ty];
     }
     return null;
   }
