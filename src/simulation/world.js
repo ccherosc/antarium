@@ -204,60 +204,94 @@ export class World {
       }
     }
 
-    // ── Entrance shaft — long single-tile drop ────────────────────────────
-    this._shaft(CX, SR + 2, SR + 13);                // y = 22–33
+    // ── Procedural colony layout — unique each run ───────────────────────────
+    const rnd  = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    const clX  = x => Math.max(GT + 8,  Math.min(W - GT - 9,  x));
+    const clY  = y => Math.max(SR + 18, Math.min(H - GT - 8,  y));
 
-    // ── Foyer — tiny antechamber just underground ──────────────────────────
-    const FOYER_Y = SR + 15;                          // y = 35
-    this._oval(CX, FOYER_Y, 2, 1, TILE.CHAMBER);     // 5×3 — intentionally small
+    const place = (cx, cy, rx, ry, type) => {
+      const ox = clX(Math.round(cx)), oy = clY(Math.round(cy));
+      this._oval(ox, oy, rx, ry, TILE.CHAMBER);
+      this._markChamberType(ox, oy, rx, ry, type);
+      return { cx: ox, cy: oy, rx, ry };
+    };
 
-    // ── Upper-left gallery — long diagonal then oval room ─────────────────
-    const UL_X = CX - 26, UL_Y = SR + 36;           // (94, 56) — 36 tiles from surface
-    this._diagonal(CX - 1, FOYER_Y + 2, UL_X, UL_Y);
-    this._oval(UL_X, UL_Y, 5, 3, TILE.CHAMBER);
+    // ── Entrance shaft ───────────────────────────────────────────────────────
+    this._shaft(CX, SR + 2, SR + 13);
+    const FY = SR + 15;
+    this._oval(CX, FY, 2, 1, TILE.CHAMBER);
 
-    // ── Upper-right gallery — mirror ───────────────────────────────────────
-    const UR_X = CX + 26, UR_Y = SR + 36;           // (146, 56)
-    this._diagonal(CX + 1, FOYER_Y + 2, UR_X, UR_Y);
-    this._oval(UR_X, UR_Y, 5, 3, TILE.CHAMBER);
+    // ── Queen chamber — slightly offset every run ────────────────────────────
+    const QX = clX(CX + rnd(-12, 12));
+    const QY = clY(SR + rnd(44, 52));
+    this._shaft(CX, FY + 2, QY - 5);
+    if (Math.abs(QX - CX) > 2) {
+      this._shaftH(Math.min(CX, QX), Math.max(CX, QX), QY - 5);
+      this._shaft(QX, QY - 5, QY - 1);
+    }
+    const Q = place(QX, QY, 7, 5, 1);
+    this.queenChamberPos = { x: QX, y: QY };
 
-    // ── Center shaft — long straight drop from foyer to queen ─────────────
-    this._shaft(CX, FOYER_Y + 2, CY - 6);            // y = 37–65
+    // ── Upper galleries (wide arms from the foyer, 2–4 per run) ─────────────
+    for (let i = 0; i < rnd(2, 4); i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const dist = rnd(28, 52) + Math.floor(i / 2) * rnd(8, 18);
+      const ch   = place(clX(CX + side * dist + rnd(-6, 6)),
+                         clY(FY + rnd(14, 24)),
+                         rnd(3, 6), rnd(2, 3), side < 0 ? 2 : 3);
+      this._diagonal(CX + (side < 0 ? -1 : 1), FY + 2, ch.cx, ch.cy - ch.ry - 1);
+    }
 
-    // ── Queen chamber ── type 1 ────────────────────────────────────────────
-    this._oval(CX, CY, 7, 5, TILE.CHAMBER);
-    this._markChamberType(CX, CY, 7, 5, 1);
+    // ── Nursery and food storage flanking the queen ──────────────────────────
+    const NUR = place(clX(QX - rnd(22, 42)), clY(QY + rnd(14, 26)),
+                      rnd(4, 6), rnd(2, 4), 2);
+    this._diagonal(QX - 6, QY + 5, NUR.cx + NUR.rx + 1, NUR.cy);
 
-    // ── Egg / nursery chambers ── type 2 ───────────────────────────────────
-    const NUR_X = CX - 22, NUR_Y = CY + 21;
-    this._diagonal(CX - 6, CY + 6, NUR_X, NUR_Y);
-    this._oval(NUR_X, NUR_Y, 5, 3, TILE.CHAMBER);
-    this._markChamberType(NUR_X, NUR_Y, 5, 3, 2);
-    this._shaft(NUR_X, NUR_Y + 4, NUR_Y + 16);
-    this._oval(NUR_X, NUR_Y + 18, 4, 2, TILE.CHAMBER);
-    this._markChamberType(NUR_X, NUR_Y + 18, 4, 2, 2);
+    const FS  = place(clX(QX + rnd(22, 42)), clY(QY + rnd(14, 26)),
+                      rnd(4, 6), rnd(2, 4), 3);
+    this._diagonal(QX + 6, QY + 5, FS.cx - FS.rx - 1, FS.cy);
 
-    // ── Food storage chambers ── type 3 ────────────────────────────────────
-    const FS_X = CX + 22, FS_Y = CY + 21;
-    this._diagonal(CX + 6, CY + 6, FS_X, FS_Y);
-    this._oval(FS_X, FS_Y, 5, 3, TILE.CHAMBER);
-    this._markChamberType(FS_X, FS_Y, 5, 3, 3);
-    this._shaft(FS_X, FS_Y + 4, FS_Y + 16);
-    this._oval(FS_X, FS_Y + 18, 4, 2, TILE.CHAMBER);
-    this._markChamberType(FS_X, FS_Y + 18, 4, 2, 3);
+    this.nurseryPos   = { x: NUR.cx, y: NUR.cy };
+    this.foodStorePos = { x: FS.cx,  y: FS.cy  };
 
-    // Known chamber positions — ant behavior targets these
-    this.queenChamberPos = { x: CX, y: CY };
-    this.nurseryPos      = { x: NUR_X, y: NUR_Y };
-    this.foodStorePos    = { x: FS_X, y: FS_Y };
+    // ── Deep gallery rows — 5 levels spreading progressively wider ───────────
+    // Spread grows from ±60 near the top to ±100 at the bottom,
+    // filling ~80% of the world width and nearly all available depth.
+    const rowDefs = [
+      { baseY: QY + rnd(26, 36),  half: rnd(56, 72),  n: rnd(3, 5) },
+      { baseY: QY + rnd(44, 56),  half: rnd(70, 86),  n: rnd(4, 5) },
+      { baseY: QY + rnd(62, 76),  half: rnd(78, 94),  n: rnd(4, 5) },
+      { baseY: QY + rnd(80, 94),  half: rnd(82, 100), n: rnd(3, 4) },
+      { baseY: QY + rnd(96, 112), half: rnd(74, 92),  n: rnd(2, 3) },
+    ];
 
-    // ── Deep galleries ── type 4 ────────────────────────────────────────────
-    this._shaft(CX, CY + 6, CY + 28);
-    this._oval(CX, CY + 30, 6, 4, TILE.CHAMBER);
-    this._markChamberType(CX, CY + 30, 6, 4, 4);
-    this._shaft(CX, CY + 35, CY + 48);
-    this._oval(CX, CY + 50, 5, 3, TILE.CHAMBER);
-    this._markChamberType(CX, CY + 50, 5, 3, 4);
+    const rows = [[Q, NUR, FS]]; // row 0 = queen level
+    for (const { baseY, half, n } of rowDefs) {
+      const row = [];
+      for (let i = 0; i < n; i++) {
+        const frac = n === 1 ? 0 : (i / (n - 1) - 0.5) * 2; // −1 to +1
+        const cx   = clX(CX + Math.round(frac * half) + rnd(-8, 8));
+        const cy   = clY(baseY + rnd(-4, 4));
+        const type = cx < CX - 15 ? 2 : cx > CX + 15 ? 3 : 4;
+        row.push(place(cx, cy, rnd(3, 6), rnd(2, 4), type));
+      }
+      rows.push(row);
+    }
+
+    // ── Connections — each chamber tunnels diagonally to nearest chamber above
+    for (let r = 1; r < rows.length; r++) {
+      for (const lo of rows[r]) {
+        let parent = rows[r - 1][0], bestD = Infinity;
+        for (const up of rows[r - 1]) {
+          const d = Math.abs(up.cx - lo.cx);
+          if (d < bestD) { bestD = d; parent = up; }
+        }
+        if (bestD > 110) continue; // isolated — will be connected by live dig
+        const fy = parent.cy + parent.ry + 1;
+        const ty = lo.cy - lo.ry - 1;
+        if (ty > fy) this._diagonal(parent.cx, fy, lo.cx, ty);
+      }
+    }
 
     // Organic deposits — clusters of dark organic matter in the soil
     // Explorers seek these out and convert them to underground food deposits
@@ -304,7 +338,7 @@ export class World {
   // Strict 1-tile arms → oval chamber (with spacing) → one branch per chamber.
   // Chambers require 20-tile clearance from all neighbours; arms are 12-20 tiles.
   _updateDigPlan() {
-    if (this._digQueue.length > 16) return;
+    if (this._digQueue.length > 28) return;
 
     const SR = CONFIG.SURFACE_ROW;
     const GT = CONFIG.GLASS_THICKNESS;
@@ -337,22 +371,22 @@ export class World {
     if (!tips.length && !chamberEdges.length) return;
 
     // ── 3. Extend tips downward ────────────────────────────────────────────
-    const chosen = [...tips].sort(() => Math.random() - 0.5).slice(0, 2);
+    const chosen = [...tips].sort(() => Math.random() - 0.5).slice(0, 4);
 
     for (const [tx, ty] of chosen) {
       const depth   = ty - SR;
-      // Chamber checkpoint every 22 tiles of depth; band prevents double-planning
-      const band    = Math.round(depth / 22) * 22;
+      // Chamber checkpoint every 16 tiles of depth; band prevents double-planning
+      const band    = Math.round(depth / 16) * 16;
       const key     = `${tx}_${band}`;
-      const atCheck = depth > 14 && !this._chamberSeeds.has(key) &&
-                      Math.abs(depth - band) <= 3;
+      const atCheck = depth > 12 && !this._chamberSeeds.has(key) &&
+                      Math.abs(depth - band) <= 4;
 
       if (atCheck) {
         // ── CHAMBER: plan an oval room — only if clear of existing chambers ─
-        const rx = 4 + Math.floor(Math.random() * 2); // 4–5 half-width
-        const ry = 3 + Math.floor(Math.random() * 2); // 3–4 half-height
-        const cy = ty + ry + 3;                        // center below tip with gap
-        if (!this._hasChamberNear(tx, cy, 20)) {       // 20-tile minimum spacing
+        const rx = 3 + Math.floor(Math.random() * 4); // 3–6 half-width
+        const ry = 2 + Math.floor(Math.random() * 3); // 2–4 half-height
+        const cy = ty + ry + 2;                        // center below tip with gap
+        if (!this._hasChamberNear(tx, cy, 12)) {       // 12-tile minimum spacing
           this._chamberSeeds.add(key);
           // Assign type by x-position: left branch = nursery, right = food, center = deep
           const newType = tx < CONFIG.COLONY_X - 8 ? 2
@@ -372,21 +406,23 @@ export class World {
           this._queueStrictShaft(tx, ty, 0, 1, 8 + Math.floor(Math.random() * 8));
         }
       } else {
-        // ── SHAFT: strict 1-tile arm, longer now for more elegant runs ────
-        const len = 12 + Math.floor(Math.random() * 10); // 12–21 tiles
+        // ── SHAFT: long arms so tunnels reach far across the world ────────
+        const len = 18 + Math.floor(Math.random() * 14); // 18–31 tiles
         this._queueStrictShaft(tx, ty, 0, 1, len);
       }
     }
 
-    // ── 4. One lateral branch per planner cycle from a random chamber edge ─
-    if (chamberEdges.length && Math.random() < 0.35) {
-      const [bx, by, dx, dy] = chamberEdges[
-        Math.floor(Math.random() * Math.min(chamberEdges.length, 8))
-      ];
+    // ── 4. Up to 2 lateral branches per cycle — fills the world sideways ────
+    const branchPool = chamberEdges.slice().sort(() => Math.random() - 0.5)
+                                   .slice(0, Math.min(chamberEdges.length, 12));
+    let branchesMade = 0;
+    for (const [bx, by, dx, dy] of branchPool) {
+      if (branchesMade >= 2) break;
+      if (Math.random() > 0.65) continue;
       const startX = bx + dx, startY = by + dy;
-      // Increased clearance (18 vs 14) — reduces chamber-to-chamber connections that blob rooms
-      if (!this._hasChamberNear(startX + dx * 8, startY + dy * 8, 18)) {
-        this._queueStrictShaft(startX, startY, dx, dy, 12 + Math.floor(Math.random() * 10));
+      if (!this._hasChamberNear(startX + dx * 6, startY + dy * 6, 12)) {
+        this._queueStrictShaft(startX, startY, dx, dy, 16 + Math.floor(Math.random() * 14));
+        branchesMade++;
       }
     }
   }
