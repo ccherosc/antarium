@@ -322,6 +322,12 @@ export class AntSystem {
           ant.wanderChangeTimer = 80 + Math.floor(Math.random() * 100);
         }
 
+        // Alarm response — high alarm pulls ants from deep in the nest toward the surface
+        if (world.alarmLevel > 0.45 && ant.y > CONFIG.SURFACE_ROW + 3 && Math.random() < 0.05) {
+          ant.wanderBias = { x: (CONFIG.COLONY_X - ant.x) * 0.12, y: -3.5 };
+          ant.wanderChangeTimer = 45 + Math.floor(Math.random() * 55);
+        }
+
         if (Math.random() < 0.0025 * (1 - stress)) {
           ant.state = STATE.RESTING;
           ant.restTicks = 15 + Math.floor(Math.random() * 35);
@@ -455,9 +461,11 @@ export class AntSystem {
           ant.state = STATE.WANDERING;
           break;
         }
-        this._moveToward(ant, world, tgt.x, tgt.y - 0.3, 1.8);
-        if (Math.hypot(ant.x - tgt.x, ant.y - tgt.y) < 1.5) {
-          // Rogue ants deal bonus damage — they're fighters
+        // Engulf swarm — each ant orbits at a unique offset so they surround the creature
+        const ox = ((ant.id * 7) % 5 - 2) * 0.85;
+        const oy = ((ant.id * 11) % 3 - 1) * 0.5;
+        this._moveToward(ant, world, tgt.x + ox, tgt.y + oy - 0.3, 1.8);
+        if (Math.hypot(ant.x - tgt.x, ant.y - tgt.y) < 2.0) {
           creatures.damage(tgt, ant.role === ROLE.ROGUE ? 3 : 1);
         }
         break;
