@@ -492,7 +492,7 @@ export class Renderer {
   _drawZoomHint(ctx, camera, w, h) {
     const pct = Math.round(camera.zoom * 100);
     const lod = camera.lodLevel;
-    const lodColors = { far: '#6688aa', mid: '#88aa66', close: '#aa8866' };
+    const lodColors = { far: '#6688aa', tiny: '#aabb88', mid: '#88aa66', close: '#aa8866' };
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(8, h - 38, 78, 32);
     ctx.font = '10px monospace';

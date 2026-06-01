@@ -89,8 +89,9 @@ export class Camera {
   }
 
   get lodLevel() {
-    if (this.zoom < CONFIG.LOD_FAR) return 'far';
-    if (this.zoom < CONFIG.LOD_MID) return 'mid';
+    if (this.zoom < CONFIG.LOD_FAR)  return 'far';
+    if (this.zoom < CONFIG.LOD_TINY) return 'tiny';
+    if (this.zoom < CONFIG.LOD_MID)  return 'mid';
     return 'close';
   }
 }

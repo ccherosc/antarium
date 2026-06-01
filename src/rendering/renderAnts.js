@@ -2,28 +2,64 @@ import { ROLE, STATE, CONFIG } from '../config.js';
 
 const C = CONFIG;
 
-// ── Far zoom: dots ───────────────────────────────────────────────────────────
+// ── Far zoom: single-pixel dots ──────────────────────────────────────────────
 function drawAntFar(ctx, sx, sy, isQueen) {
   const x = Math.round(sx), y = Math.round(sy);
   if (isQueen) {
-    // 4×3 deep-red body + 1-pixel gold crown above
     ctx.fillStyle = '#c03010';
     ctx.fillRect(x - 2, y - 1, 4, 3);
-    ctx.fillStyle = '#e84020'; // highlight
-    ctx.fillRect(x - 2, y - 1, 4, 1);
-    ctx.fillStyle = '#ffd040'; // crown dot
-    ctx.fillRect(x,     y - 3, 1, 1);
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(x, y - 3, 1, 1);
   } else {
     ctx.fillStyle = '#1a1008';
     ctx.fillRect(x, y, 2, 1);
   }
 }
 
-// ── Mid zoom: pixel ant ──────────────────────────────────────────────────────
-function drawAntMid(ctx, sx, sy, angle, isQueen, carryFood) {
+// ── Tiny zoom: proportional 3-part silhouette ────────────────────────────────
+// Sprite designed at native zoom=LOD_TINY (0.75); scaled proportionally below that.
+// This fills the gap between dots and the full mid-zoom sprite.
+function drawAntTiny(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
+  // Scale so ant is always ~1.5 tiles long regardless of zoom
+  const s = Math.max(0.15, zoom / C.LOD_TINY); // 1.0 at LOD_TINY, shrinks below
+  ctx.save();
+  ctx.translate(Math.round(sx), Math.round(sy));
+  ctx.rotate(angle);
+  ctx.scale(s, s);
+
+  if (isQueen) {
+    ctx.fillStyle = '#c03010';
+    ctx.fillRect(-7, -2, 5, 4);  // gaster
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(-6, -1, 1, 2);  // gold mark
+    ctx.fillStyle = '#c03010';
+    ctx.fillRect(-2, -1, 3, 3);  // thorax
+    ctx.fillStyle = '#d84028';
+    ctx.fillRect( 1, -2, 3, 3);  // head
+  } else {
+    const bc = '#1e1008';
+    ctx.fillStyle = bc;
+    ctx.fillRect(-6, -1, 4, 3);  // gaster
+    ctx.fillRect(-2, -1, 3, 2);  // thorax
+    ctx.fillStyle = '#2a1c0c';
+    ctx.fillRect( 1, -1, 3, 2);  // head
+    if (carryFood) {
+      ctx.fillStyle = '#f8d040';
+      ctx.fillRect(4, -1, 2, 2);
+    }
+  }
+  ctx.restore();
+}
+
+// ── Mid zoom: pixel ant, proportionally scaled ───────────────────────────────
+// Sprite designed at LOD_MID (zoom 1.8); ctx.scale keeps it world-proportional
+// at any zoom in the tiny→mid range so ants never look oversized.
+function drawAntMid(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
+  const s = zoom / C.LOD_MID; // 1.0 at LOD_MID boundary, shrinks with zoom
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(angle);
+  ctx.scale(s, s);
 
   if (isQueen) {
     // Queen mid-zoom: distinctive large gaster + wing stubs
@@ -315,7 +351,7 @@ function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame, carryDirt)
 
 // ── Egg ──────────────────────────────────────────────────────────────────────
 function drawEgg(ctx, sx, sy, zoom, hatchProgress) {
-  const r = zoom < C.LOD_FAR ? 1.2 : zoom < C.LOD_MID ? 2.5 : 5;
+  const r = zoom < C.LOD_FAR ? 1.2 : zoom < C.LOD_TINY ? 1.8 : zoom < C.LOD_MID ? 2.5 : 5;
   const alpha = 0.5 + hatchProgress * 0.5;
   ctx.fillStyle = `rgba(240,232,192,${alpha})`;
   ctx.beginPath();
@@ -348,19 +384,20 @@ export function renderAnts(ctx, antSystem, queen, camera) {
     const [sx, sy] = camera.worldToScreen(ant.x * ts, ant.y * ts);
     if (sx < -20 || sx > camera.cw + 20 || sy < -20 || sy > camera.ch + 20) continue;
 
-    if      (lod === 'far')  drawAntFar(ctx, sx, sy, false);
-    else if (lod === 'mid')  drawAntMid(ctx, sx, sy, ant.angle, false, ant.carryFood || ant.carryDirt);
-    else                     drawAntClose(ctx, sx, sy, ant.angle, ant.role, ant.carryFood, ant.animFrame, ant.carryDirt);
+    if      (lod === 'far')   drawAntFar(ctx, sx, sy, false);
+    else if (lod === 'tiny')  drawAntTiny(ctx, sx, sy, ant.angle, zoom, false, ant.carryFood || ant.carryDirt);
+    else if (lod === 'mid')   drawAntMid(ctx, sx, sy, ant.angle, zoom, false, ant.carryFood || ant.carryDirt);
+    else                      drawAntClose(ctx, sx, sy, ant.angle, ant.role, ant.carryFood, ant.animFrame, ant.carryDirt);
   }
 
   // Queen
   const [qsx, qsy] = camera.worldToScreen(queen.x * ts, queen.y * ts);
   if (qsx > -50 && qsx < camera.cw + 50 && qsy > -50 && qsy < camera.ch + 50) {
-    if      (lod === 'far')  drawAntFar(ctx, qsx, qsy, true);
-    else if (lod === 'mid')  drawAntMid(ctx, qsx, qsy, queen.angle, true, false);
-    else                     drawQueenClose(ctx, qsx, qsy, queen.angle, queen.animFrame);
+    if      (lod === 'far')   drawAntFar(ctx, qsx, qsy, true);
+    else if (lod === 'tiny')  drawAntTiny(ctx, qsx, qsy, queen.angle, zoom, true, false);
+    else if (lod === 'mid')   drawAntMid(ctx, qsx, qsy, queen.angle, zoom, true, false);
+    else                      drawQueenClose(ctx, qsx, qsy, queen.angle, queen.animFrame);
 
-    // Crown marker at non-close zoom (mid already draws crown)
     if (lod === 'far') {
       ctx.fillStyle = '#ffd040';
       ctx.fillRect(Math.round(qsx), Math.round(qsy) - 5, 1, 1);

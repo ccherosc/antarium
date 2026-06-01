@@ -96,8 +96,9 @@ export const CONFIG = {
   MIN_ZOOM: 0.18,
   MAX_ZOOM: 10,
 
-  LOD_FAR: 0.55,
-  LOD_MID: 1.8,
+  LOD_FAR:  0.45,   // below → 2px dot
+  LOD_TINY: 0.75,   // below → proportional 3-part silhouette
+  LOD_MID:  1.8,    // below → scaled mid sprite; above → full close sprite
 
   // Tile colors
   C_AIR: '#080504',
