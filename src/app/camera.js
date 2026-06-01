@@ -8,9 +8,9 @@ export class Camera {
     const worldW = CONFIG.WORLD_WIDTH * CONFIG.TILE_SIZE;
     const worldH = CONFIG.WORLD_HEIGHT * CONFIG.TILE_SIZE;
 
-    // Start zoom to fit world nicely
+    // Fit the whole world to the screen on startup
     this.zoom = Math.min(
-      (canvasWidth * 0.72) / worldW,
+      canvasWidth  / worldW,
       canvasHeight / worldH
     );
     this.zoom = Math.max(this.zoom, CONFIG.MIN_ZOOM);

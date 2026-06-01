@@ -9,7 +9,7 @@ const STEPS = [
   },
   {
     title: 'Read the dashboard',
-    body: 'Food Store and Water Store are your critical stats. Vitality and Happiness track queen health. The Colony Log reports hatches, deaths, and warnings in real time.',
+    body: 'Food Store and Water Store are your critical stats. Vitality and Happiness track queen health. The Ant News reports hatches, deaths, and warnings in real time.',
   },
   {
     title: 'Survival mode',   // overwritten at show() time
@@ -20,7 +20,7 @@ const STEPS = [
 const MODE_STEPS = {
   survival: {
     title: 'Survival mode',
-    body: 'The queen can die. If food or water hits zero, her health falls fast. Drop supplies regularly, boost foragers in the ROLES panel, and watch the Colony Log for critical warnings.',
+    body: 'The queen can die. If food or water hits zero, her health falls fast. Drop supplies regularly, boost foragers in the ROLES panel, and watch the Ant News for critical warnings.',
   },
   screensaver: {
     title: 'Screensaver mode',

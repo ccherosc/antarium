@@ -5,7 +5,7 @@ export class GameLoop {
     this.running = false;
     this._lastTime = 0;
     this._raf = null;
-    this.speed = 2;
+    this.speed = 0;
     this.simAccum = 0;
     this.SIM_STEP = 16; // ms per sim tick
   }
@@ -40,6 +40,6 @@ export class GameLoop {
   }
 
   setSpeed(s) {
-    this.speed = Math.max(0.1, Math.min(8, s));
+    this.speed = Math.max(0, Math.min(8, s));
   }
 }
