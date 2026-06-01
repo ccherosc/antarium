@@ -59,16 +59,17 @@ export class AntSystem {
 
   _spawn() {
     const { COLONY_X: CX, COLONY_Y: CY } = CONFIG;
+    const nursery = this.world.nurseryPos || { x: CX - 14, y: CY + 8 };
     for (let i = 0; i < CONFIG.INITIAL_WORKERS;   i++) this.ants.push(makeAnt(ROLE.WORKER,   CX + (Math.random()-0.5)*8, CY + (Math.random()-0.5)*6));
     for (let i = 0; i < CONFIG.INITIAL_DIGGERS;   i++) this.ants.push(makeAnt(ROLE.DIGGER,   CX + (Math.random()-0.5)*6, CY + (Math.random()-0.5)*4));
     for (let i = 0; i < CONFIG.INITIAL_FORAGERS;  i++) this.ants.push(makeAnt(ROLE.FORAGER,  CX + (Math.random()-0.5)*6, CY - 5 + Math.random()*3));
-    for (let i = 0; i < CONFIG.INITIAL_NURSES;    i++) this.ants.push(makeAnt(ROLE.NURSE,    CX - 14 + (Math.random()-0.5)*4, CY + 8 + Math.random()*3));
+    for (let i = 0; i < CONFIG.INITIAL_NURSES;    i++) this.ants.push(makeAnt(ROLE.NURSE,    nursery.x + (Math.random()-0.5)*4, nursery.y + (Math.random()-0.5)*3));
     for (let i = 0; i < CONFIG.INITIAL_EXPLORERS; i++) this.ants.push(makeAnt(ROLE.EXPLORER, CX + (Math.random()-0.5)*10, CY + (Math.random()-0.5)*8));
 
     for (let i = 0; i < CONFIG.INITIAL_EGGS; i++) {
       this.eggs.push({
-        x: CONFIG.COLONY_X - 14 + (Math.random()-0.5)*3,
-        y: CONFIG.COLONY_Y + 8 + Math.random()*2,
+        x: nursery.x + (Math.random()-0.5)*3,
+        y: nursery.y + (Math.random()-0.5)*2,
         hatchTimer: 200 + Math.floor(Math.random() * CONFIG.EGG_HATCH_TICKS * 0.5),
         nurseBonus: 0,
       });
@@ -484,8 +485,8 @@ export class AntSystem {
 
       // ── NURSING ──────────────────────────────────────────────────────────
       case STATE.NURSING: {
-        const nx = CONFIG.COLONY_X - 14, ny = CONFIG.COLONY_Y + 8;
-        this._moveToward(ant, world, nx + (Math.random()-0.5)*4, ny + (Math.random()-0.5)*3, 0.45);
+        const nursery = world.nurseryPos || { x: CONFIG.COLONY_X - 14, y: CONFIG.COLONY_Y + 8 };
+        this._moveToward(ant, world, nursery.x + (Math.random()-0.5)*4, nursery.y + (Math.random()-0.5)*3, 0.45);
         for (const egg of this.eggs) {
           if (Math.abs(egg.x - ant.x) + Math.abs(egg.y - ant.y) < 6)
             egg.nurseBonus = Math.min(egg.nurseBonus + 0.35, 2.5);
