@@ -5,13 +5,15 @@ export class Queen {
   constructor() {
     this.x = CONFIG.COLONY_X;
     this.y = CONFIG.COLONY_Y;
+    this.targetX = CONFIG.COLONY_X;
+    this.targetY = CONFIG.COLONY_Y;
     this.health = 100;
     this.hunger = 10;
     this.eggTimer = CONFIG.QUEEN_EGG_INTERVAL * 0.5;
     this.restTimer = 0;
     this.animFrame = 0;
     this.animTimer = 0;
-    this.angle = Math.PI * 0.25;
+    this.angle = 0;
   }
 
   update(world, antSystem, sim) {
@@ -63,12 +65,29 @@ export class Queen {
       }
     }
 
-    // Subtle movement within queen chamber
+    // Pick a new drift target periodically, then smoothly glide toward it
     this.restTimer--;
     if (this.restTimer <= 0) {
-      this.restTimer = 40 + Math.floor(Math.random() * 60);
-      this.x = CONFIG.COLONY_X + (Math.random() - 0.5) * 3;
-      this.y = CONFIG.COLONY_Y + (Math.random() - 0.5) * 2;
+      this.restTimer = 80 + Math.floor(Math.random() * 120);
+      this.targetX = CONFIG.COLONY_X + (Math.random() - 0.5) * 4;
+      this.targetY = CONFIG.COLONY_Y + (Math.random() - 0.5) * 2.5;
+    }
+
+    // Lerp position — slow, regal drift (reaches ~75% of target in ~50 ticks)
+    const lerpSpeed = 0.028;
+    this.x += (this.targetX - this.x) * lerpSpeed;
+    this.y += (this.targetY - this.y) * lerpSpeed;
+
+    // Rotate smoothly toward movement direction
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
+    if (Math.hypot(dx, dy) > 0.08) {
+      const targetAngle = Math.atan2(dy, dx);
+      let diff = targetAngle - this.angle;
+      // Wrap diff to [-π, π] so she turns the short way
+      while (diff >  Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.angle += diff * 0.04; // smooth turn — ~25 ticks to align fully
     }
   }
 

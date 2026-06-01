@@ -2,53 +2,224 @@ import { ROLE, STATE, CONFIG } from '../config.js';
 
 const C = CONFIG;
 
-// ── Far zoom: 2×1 dot ───────────────────────────────────────────────────────
+// ── Far zoom: dots ───────────────────────────────────────────────────────────
 function drawAntFar(ctx, sx, sy, isQueen) {
-  ctx.fillStyle = isQueen ? '#c03010' : '#1a1008';
+  const x = Math.round(sx), y = Math.round(sy);
   if (isQueen) {
-    ctx.fillRect(Math.round(sx) - 1, Math.round(sy) - 1, 3, 2);
+    // 4×3 deep-red body + 1-pixel gold crown above
+    ctx.fillStyle = '#c03010';
+    ctx.fillRect(x - 2, y - 1, 4, 3);
+    ctx.fillStyle = '#e84020'; // highlight
+    ctx.fillRect(x - 2, y - 1, 4, 1);
+    ctx.fillStyle = '#ffd040'; // crown dot
+    ctx.fillRect(x,     y - 3, 1, 1);
   } else {
-    ctx.fillRect(Math.round(sx), Math.round(sy), 2, 1);
+    ctx.fillStyle = '#1a1008';
+    ctx.fillRect(x, y, 2, 1);
   }
 }
 
-// ── Mid zoom: 8-px pixel ant ─────────────────────────────────────────────────
+// ── Mid zoom: pixel ant ──────────────────────────────────────────────────────
 function drawAntMid(ctx, sx, sy, angle, isQueen, carryFood) {
-  const s  = isQueen ? 1.6 : 1.0;
-  const bc = isQueen ? '#b03010' : '#1e1008';
-  const hc = isQueen ? '#d04018' : '#2a1c0c';
-  const lc = '#0e0804';
-
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(angle);
 
-  // Abdomen
-  ctx.fillStyle = bc;
-  ctx.fillRect(-5 * s, -1.5 * s | 0, 4 * s | 0, 3 * s | 0);
-  // Petiole
-  ctx.fillRect(-1 * s, -1 * s | 0, 2 * s | 0, 2 * s | 0);
-  // Thorax
-  ctx.fillRect(1 * s | 0, -1.5 * s | 0, 3 * s | 0, 3 * s | 0);
-  // Head
-  ctx.fillStyle = hc;
-  ctx.fillRect(4 * s | 0, -1.5 * s | 0, 3 * s | 0, 3 * s | 0);
-  // Legs (3 pairs, static at mid)
-  ctx.fillStyle = lc;
-  for (let i = -2; i <= 0; i++) {
-    ctx.fillRect(i * 2 * s | 0, -2.5 * s | 0, 1, 2 * s | 0);
-    ctx.fillRect(i * 2 * s | 0,  1.5 * s | 0, 1, 2 * s | 0);
-  }
-  // Carried food
-  if (carryFood) {
-    ctx.fillStyle = '#f8d040';
-    ctx.fillRect(5 * s | 0, -2 * s | 0, 2 * s | 0, 2 * s | 0);
+  if (isQueen) {
+    // Queen mid-zoom: distinctive large gaster + wing stubs
+    // Gaster — wide oval
+    ctx.fillStyle = '#c83020';
+    ctx.fillRect(-11, -3, 10, 6);
+    ctx.fillStyle = '#e04030'; // top highlight
+    ctx.fillRect(-11, -3, 10, 1);
+    ctx.fillStyle = '#8a1c0c'; // bottom shadow
+    ctx.fillRect(-11,  2, 10, 1);
+    // Gold spot on gaster
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(-8, -1, 2, 2);
+    ctx.fillRect(-5, -1, 2, 2);
+    // Petiole
+    ctx.fillStyle = '#1a0c04';
+    ctx.fillRect(-1, -1, 2, 2);
+    // Thorax
+    ctx.fillStyle = '#c83018';
+    ctx.fillRect( 1, -2, 4, 4);
+    // Wing stubs
+    ctx.fillStyle = '#e04830';
+    ctx.fillRect( 1, -4, 3, 2); // top stub
+    ctx.fillRect( 1,  2, 3, 2); // bottom stub
+    // Head
+    ctx.fillStyle = '#d84028';
+    ctx.fillRect( 5, -2, 4, 4);
+    // Compound eyes
+    ctx.fillStyle = '#ff9020';
+    ctx.fillRect( 8, -2, 1, 1);
+    ctx.fillRect( 8,  1, 1, 1);
+    // Mandibles
+    ctx.fillStyle = '#c83018';
+    ctx.fillRect( 9, -1, 2, 1);
+    ctx.fillRect( 9,  0, 2, 1);
+    // Legs
+    ctx.fillStyle = '#1a0c04';
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(-1 + i * 2, -4, 1, 3);
+      ctx.fillRect(-1 + i * 2,  2, 1, 3);
+    }
+  } else {
+    // Worker mid-zoom
+    const bc = '#1e1008', hc = '#2a1c0c', lc = '#0e0804';
+    ctx.fillStyle = bc;
+    ctx.fillRect(-5, -2, 4, 4); // abdomen
+    ctx.fillRect(-1, -1, 2, 2); // petiole
+    ctx.fillRect( 1, -2, 3, 4); // thorax
+    ctx.fillStyle = hc;
+    ctx.fillRect( 4, -2, 3, 3); // head
+    ctx.fillStyle = lc;
+    for (let i = -2; i <= 0; i++) {
+      ctx.fillRect(i * 2, -3, 1, 3);
+      ctx.fillRect(i * 2,  2, 1, 3);
+    }
+    if (carryFood) {
+      ctx.fillStyle = '#f8d040';
+      ctx.fillRect(6, -2, 2, 2);
+    }
   }
 
   ctx.restore();
 }
 
-// ── Close zoom: detailed pixel ant ──────────────────────────────────────────
+// ── Close zoom: queen ────────────────────────────────────────────────────────
+// Drawn at scale 2.0 — all coordinates are in sprite-pixels (×2 on screen).
+// Anatomy: gaster(←) · petiole · thorax · head(→), ant faces right (+x).
+function drawQueenClose(ctx, sx, sy, angle, animFrame) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+  ctx.scale(2.0, 2.0);
+
+  const lo = animFrame === 1 ? 1 : 0; // leg animation offset
+
+  // ── Gaster — queen's defining trait: massive, swollen abdomen ─────────────
+  // Oval built from horizontal bands (widest in middle, narrow caps at top/bottom)
+  const bands = [
+    [-10, -5,  7, '#d04828'],  // top cap, highlight
+    [-12, -4, 10, '#e05030'],  // upper highlight band
+    [-13, -3, 12, '#cc3020'],  // main body upper
+    [-14, -2, 13, '#c02c1c'],  // widest row
+    [-14, -1, 13, '#b82818'],  // center
+    [-14,  0, 13, '#b02414'],  // center lower
+    [-13,  1, 12, '#a02010'],  // main body lower
+    [-12,  2, 10, '#8e1c0c'],  // lower shadow
+    [-10,  3,  7, '#7a1408'],  // bottom cap shadow
+  ];
+  for (const [x, y, w, c] of bands) { ctx.fillStyle = c; ctx.fillRect(x, y, w, 1); }
+
+  // Dorsal stripe — segmentation between gaster sections
+  ctx.fillStyle = '#9a1e0e';
+  ctx.fillRect(-13, -1, 12, 1);
+  ctx.fillRect(-13,  1, 12, 1);
+
+  // Royal gold crown spots — three oval marks on the gaster
+  const spots = [[-11, -1], [-8, -1], [-5, -1]];
+  for (const [x, y] of spots) {
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(x, y, 2, 2);
+    ctx.fillStyle = '#fff080'; // inner shine
+    ctx.fillRect(x, y, 1, 1);
+  }
+
+  // ── Petiole (narrow waist node) ───────────────────────────────────────────
+  ctx.fillStyle = '#1e0e06';
+  ctx.fillRect(-2, -1, 2, 2);
+  ctx.fillStyle = '#2e1808';
+  ctx.fillRect(-2, -1, 2, 1); // top highlight
+
+  // ── Thorax ────────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#c83018';
+  ctx.fillRect(0, -2, 5, 5);
+  ctx.fillStyle = '#e04030'; // top highlight
+  ctx.fillRect(0, -2, 5, 1);
+  ctx.fillStyle = '#9a2010'; // bottom shadow
+  ctx.fillRect(0,  2, 5, 1);
+  ctx.fillStyle = '#b02818'; // right shadow
+  ctx.fillRect(4, -2, 1, 4);
+
+  // Wing stubs — queens that have shed their wings carry distinctive scars
+  ctx.fillStyle = '#c04828'; // stub body
+  ctx.fillRect(0, -4, 4, 2); // dorsal stub
+  ctx.fillRect(0,  3, 4, 2); // ventral stub
+  ctx.fillStyle = '#e06040'; // stub top highlight
+  ctx.fillRect(0, -4, 4, 1);
+  ctx.fillRect(0,  4, 4, 1);
+  ctx.fillStyle = '#f08060'; // stub vein
+  ctx.fillRect(1, -4, 2, 1);
+
+  // ── Head (larger than worker, majestic) ───────────────────────────────────
+  ctx.fillStyle = '#d84028';
+  ctx.fillRect(5, -3, 5, 6);
+  ctx.fillStyle = '#f05038'; // top + left highlights
+  ctx.fillRect(5, -3, 5, 1);
+  ctx.fillRect(5, -3, 1, 6);
+  ctx.fillStyle = '#a82c1c'; // right + bottom shadow
+  ctx.fillRect(9, -3, 1, 6);
+  ctx.fillStyle = '#c03020';
+  ctx.fillRect(5,  2, 5, 1);
+
+  // Compound eyes — 2×2, two of them (upper and lower)
+  const eyes = [[-3, 2], [1, 2]]; // [dy, dx from head-right-corner]
+  for (const [ey, ex] of eyes) {
+    ctx.fillStyle = '#ff9020';
+    ctx.fillRect(7, ey, 2, 2);
+    ctx.fillStyle = '#ffcc50'; // shine
+    ctx.fillRect(7, ey, 1, 1);
+    ctx.fillStyle = '#1a0000'; // pupil
+    ctx.fillRect(8, ey + 1, 1, 1);
+  }
+
+  // ── Antennae (long, elegantly curved) ────────────────────────────────────
+  ctx.fillStyle = '#2a1408';
+  // Upper antenna
+  ctx.fillRect(5, -4, 1, 2);  // base segment
+  ctx.fillRect(6, -5, 1, 1);  // elbow
+  ctx.fillRect(7, -6, 3, 1);  // shaft
+  ctx.fillRect(9, -7, 2, 1);  // tip
+  // Lower antenna (offset slightly)
+  ctx.fillRect(6, -4, 1, 2);
+  ctx.fillRect(7, -5, 1, 1);
+  ctx.fillRect(8, -6, 3, 1);
+  ctx.fillRect(10,-7, 2, 1);
+
+  // ── Mandibles (powerful, prominent) ──────────────────────────────────────
+  ctx.fillStyle = '#d84028';
+  ctx.fillRect(10, -2, 2, 1);
+  ctx.fillRect(10,  1, 2, 1);
+  ctx.fillStyle = '#f05840'; // mandible tips
+  ctx.fillRect(11, -2, 1, 1);
+  ctx.fillRect(11,  1, 1, 1);
+
+  // ── Legs — 3 pairs, animated ──────────────────────────────────────────────
+  ctx.fillStyle = '#200e06';
+  // Pair 1 (thorax front)
+  ctx.fillRect(3, -2 - lo, 1, 4);
+  ctx.fillRect(3,  2 + lo, 1, 4);
+  // Pair 2 (thorax mid)
+  ctx.fillRect(1, -2,      1, 4);
+  ctx.fillRect(1,  2,      1, 4);
+  // Pair 3 (thorax rear)
+  ctx.fillRect(-1, -2 + lo, 1, 4);
+  ctx.fillRect(-1,  2 - lo, 1, 4);
+  // Leg tips (small horizontal segment at end of each leg)
+  ctx.fillRect( 4, -5 - lo, 2, 1);
+  ctx.fillRect( 4,  5 + lo, 2, 1);
+  ctx.fillRect( 2, -5,      2, 1);
+  ctx.fillRect( 2,  5,      2, 1);
+  ctx.fillRect( 0, -5 + lo, 2, 1);
+  ctx.fillRect( 0,  5 - lo, 2, 1);
+
+  ctx.restore();
+}
+
+// ── Close zoom: worker/digger/etc ────────────────────────────────────────────
 function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame, carryDirt) {
   const isQueen    = role === ROLE.QUEEN;
   const isExplorer = role === ROLE.EXPLORER;
@@ -184,16 +355,15 @@ export function renderAnts(ctx, antSystem, queen, camera) {
 
   // Queen
   const [qsx, qsy] = camera.worldToScreen(queen.x * ts, queen.y * ts);
-  if (qsx > -30 && qsx < camera.cw + 30 && qsy > -30 && qsy < camera.ch + 30) {
+  if (qsx > -50 && qsx < camera.cw + 50 && qsy > -50 && qsy < camera.ch + 50) {
     if      (lod === 'far')  drawAntFar(ctx, qsx, qsy, true);
     else if (lod === 'mid')  drawAntMid(ctx, qsx, qsy, queen.angle, true, false);
-    else                     drawAntClose(ctx, qsx, qsy, queen.angle, ROLE.QUEEN, false, queen.animFrame);
+    else                     drawQueenClose(ctx, qsx, qsy, queen.angle, queen.animFrame);
 
-    // Crown indicator at non-close zoom
-    if (lod !== 'close') {
+    // Crown marker at non-close zoom (mid already draws crown)
+    if (lod === 'far') {
       ctx.fillStyle = '#ffd040';
-      const sz = lod === 'far' ? 1 : 3;
-      ctx.fillRect(qsx - sz, qsy - (lod === 'far' ? 3 : 7), sz * 2 + 1, 1);
+      ctx.fillRect(Math.round(qsx), Math.round(qsy) - 5, 1, 1);
     }
   }
 }

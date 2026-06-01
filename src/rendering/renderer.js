@@ -74,21 +74,82 @@ export class Renderer {
   _drawAnthill(ctx, camera, world) {
     const ts   = CONFIG.TILE_SIZE;
     const SR   = CONFIG.SURFACE_ROW;
+    const CX   = CONFIG.COLONY_X;
     const zoom = camera.zoom;
     const sw   = ts * zoom;
+
+    // Pre-compute column heights so we can shade the mound contour
+    const colHeight = new Int16Array(world.width);
+    for (let x = 0; x < world.width; x++) {
+      for (let y = SR - 1; y >= 0; y--) {
+        if (world.get(x, y) === TILE.ANTHILL) colHeight[x]++;
+        else break;
+      }
+    }
+    const peakHeight = Math.max(...colHeight);
+    if (peakHeight === 0) return; // nothing to draw yet
 
     for (let x = 0; x < world.width; x++) {
       for (let y = 0; y < SR; y++) {
         if (world.get(x, y) !== TILE.ANTHILL) continue;
         const [sx, sy] = camera.worldToScreen(x * ts, y * ts);
         if (sx < -sw || sx > camera.cw || sy < -sw || sy > camera.ch) continue;
-        // Vary shade per tile using the same low-bias hash as the tile renderer
-        const n  = ((x * 374761393 + y * 668265263) * 1274126177 >>> 0) & 0xff;
-        const j  = (n / 255) * 12 - 6;
-        const r  = 152 + j | 0, g = 104 + j | 0, b = 52 + j | 0;
+
+        // How deep in the pile is this tile? (0 = top surface of mound)
+        const depthInPile = SR - 1 - y;
+        const isTop = depthInPile === 0 || world.get(x, y - 1) !== TILE.ANTHILL;
+
+        // Hash for stable per-tile noise
+        const n = ((x * 374761393 + y * 668265263) * 1274126177 >>> 0) & 0xff;
+        const j = (n / 255) * 14 - 7;
+
+        // Colour: top of pile lighter (sunlit), base darker (shadowed)
+        const topBoost = isTop ? 14 : 0;
+        const r = Math.max(0, Math.min(255, 148 + j + topBoost | 0));
+        const g = Math.max(0, Math.min(255, 100 + j + topBoost | 0));
+        const b = Math.max(0, Math.min(255,  50 + j + topBoost | 0));
         ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.fillRect(sx, sy, sw, sw);
+
+        // Left-shadow gives the pile a 3-D rounded look
+        ctx.fillStyle = 'rgba(0,0,0,0.20)';
+        ctx.fillRect(sx, sy, sw * 0.28, sw);
+
+        // Sunlit top edge
+        if (isTop) {
+          ctx.fillStyle = 'rgba(255,210,120,0.28)';
+          ctx.fillRect(sx, sy, sw, sw * 0.35);
+        }
+
+        // Scattered dirt specks
+        if ((n & 0x1c) === 0) {
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillRect(sx + ((n & 3)) * sw * 0.25, sy + ((n >> 2) & 3) * sw * 0.25, sw * 0.22, sw * 0.22);
+        }
       }
+    }
+
+    // ── Entrance tunnel mouth ──────────────────────────────────────────────
+    // Draw a dark oval opening at the base of the mound where the tunnel exits.
+    if (peakHeight > 0) {
+      const [esx, esy] = camera.worldToScreen((CX + 0.5) * ts, SR * ts);
+      const hw = sw * 1.6, hh = sw * 0.75; // half-widths of the entrance oval
+      // Dark earth rim
+      ctx.fillStyle = 'rgba(6,3,0,0.72)';
+      ctx.beginPath();
+      ctx.ellipse(esx, esy, hw, hh, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Inner void — the actual tunnel opening
+      ctx.fillStyle = 'rgba(0,0,0,0.92)';
+      ctx.beginPath();
+      ctx.ellipse(esx, esy, hw * 0.58, hh * 0.58, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Faint amber rim light (sunlight catching the edge)
+      ctx.strokeStyle = 'rgba(180,120,40,0.30)';
+      ctx.lineWidth = sw * 0.18;
+      ctx.beginPath();
+      ctx.ellipse(esx, esy, hw, hh, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 
@@ -136,18 +197,38 @@ export class Renderer {
   }
 
   _drawQueenGlow(ctx, camera, queen) {
-    const ts     = CONFIG.TILE_SIZE;
+    const ts       = CONFIG.TILE_SIZE;
     const [sx, sy] = camera.worldToScreen(queen.x * ts, queen.y * ts);
-    const health = queen.health / 100;
-    const radius = Math.max(28, 55 * camera.zoom);
+    const health   = queen.health / 100;
 
-    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
-    grad.addColorStop(0,    `rgba(255,130,20,${(0.24 * health).toFixed(2)})`);
-    grad.addColorStop(0.45, `rgba(255,110,10,${(0.12 * health).toFixed(2)})`);
-    grad.addColorStop(1,    'rgba(255,90,0,0)');
+    // Slow heartbeat pulse — period ≈ 3 seconds
+    const pulse  = 0.5 + 0.5 * Math.sin(Date.now() * 0.0021);
+    const r0     = Math.max(22, (38 + pulse * 10) * camera.zoom);
+    const r1     = Math.max(40, (65 + pulse * 18) * camera.zoom);
+    const r2     = Math.max(65, (110 + pulse * 22) * camera.zoom);
 
-    ctx.fillStyle = grad;
-    ctx.fillRect(sx - radius, sy - radius, radius * 2, radius * 2);
+    // Inner hot core — amber-white
+    const g0 = ctx.createRadialGradient(sx, sy, 0, sx, sy, r0);
+    g0.addColorStop(0,   `rgba(255,210,100,${(0.30 * health).toFixed(2)})`);
+    g0.addColorStop(0.6, `rgba(255,160,40,${(0.18 * health).toFixed(2)})`);
+    g0.addColorStop(1,   'rgba(255,120,20,0)');
+    ctx.fillStyle = g0;
+    ctx.fillRect(sx - r0, sy - r0, r0 * 2, r0 * 2);
+
+    // Mid ring — deep orange halo
+    const g1 = ctx.createRadialGradient(sx, sy, r0 * 0.5, sx, sy, r1);
+    g1.addColorStop(0,   `rgba(255,100,10,${(0.12 * health).toFixed(2)})`);
+    g1.addColorStop(0.5, `rgba(220,60,10,${(0.07 * health).toFixed(2)})`);
+    g1.addColorStop(1,   'rgba(200,40,0,0)');
+    ctx.fillStyle = g1;
+    ctx.fillRect(sx - r1, sy - r1, r1 * 2, r1 * 2);
+
+    // Outer atmospheric blush
+    const g2 = ctx.createRadialGradient(sx, sy, r1 * 0.4, sx, sy, r2);
+    g2.addColorStop(0,   `rgba(180,40,0,${(0.05 * health).toFixed(2)})`);
+    g2.addColorStop(1,   'rgba(140,20,0,0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(sx - r2, sy - r2, r2 * 2, r2 * 2);
   }
 
   _drawCreatures(ctx, camera, creatures) {
@@ -242,21 +323,19 @@ export class Renderer {
         ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
         ctx.fillRect(-u * 1.1, -u * 1.2, u * 2.2 * hpPct, u * 0.22);
 
-      } else { // earwig
+      } else if (c.type === 'earwig') {
         // Elongated body segments
         ctx.fillStyle = c.hitFlash > 0 ? '#7a3818' : '#2c1e10';
         ctx.fillRect(-u * 1.6, -u * 0.45, u * 3.2, u * 0.9);
-        // Segment lines
         ctx.fillStyle = '#1e140a';
         for (let i = -1; i <= 1; i++) ctx.fillRect(i * u * 0.8, -u * 0.4, u * 0.1, u * 0.8);
         // Pincers at rear
         ctx.fillStyle = '#3a2818';
         ctx.fillRect(-u * 2.4, -u * 0.5, u * 0.8, u * 0.22);
         ctx.fillRect(-u * 2.4,  u * 0.28, u * 0.8, u * 0.22);
-        // Head
+        // Head + antennae
         ctx.fillStyle = '#241808';
         ctx.fillRect(u * 1.6, -u * 0.35, u * 0.7, u * 0.7);
-        // Antennae
         ctx.fillStyle = '#3a2810';
         ctx.fillRect(u * 2.2, -u * 0.6, u * 0.55, u * 0.1);
         ctx.fillRect(u * 2.2,  u * 0.5, u * 0.55, u * 0.1);
@@ -267,12 +346,120 @@ export class Renderer {
           ctx.fillRect(lx, u * 0.45 + lo, u * 0.12, u * 0.55);
           ctx.fillRect(lx, -u * 0.45 - lo, u * 0.12, u * 0.55);
         }
-        // HP bar
         const hpPct = c.hp / c.maxHp;
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         ctx.fillRect(-u * 1.6, -u * 1.1, u * 3.2, u * 0.22);
         ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
         ctx.fillRect(-u * 1.6, -u * 1.1, u * 3.2 * hpPct, u * 0.22);
+
+      } else if (c.type === 'centipede') {
+        // Long segmented body with many legs — drawn as 6 connected ovals
+        const segs = 6, sw2 = u * 0.55;
+        ctx.fillStyle = c.hitFlash > 0 ? '#8a2810' : '#1a1c0c';
+        for (let s = 0; s < segs; s++) {
+          const sx = (s - segs * 0.5 + 0.5) * sw2;
+          const sy2 = (s % 2 === 0 ? 1 : -1) * u * 0.08; // slight undulation
+          ctx.fillRect(sx - sw2 * 0.45, sy2 - u * 0.35, sw2 * 0.9, u * 0.7);
+          // Pair of legs per segment
+          ctx.fillStyle = '#0e1008';
+          ctx.fillRect(sx - u * 0.08, u * 0.35 + sy2 + leg * 0.3, u * 0.12, u * 0.55);
+          ctx.fillRect(sx - u * 0.08, -u * 0.35 + sy2 - leg * 0.3, u * 0.12, u * 0.55);
+          ctx.fillStyle = c.hitFlash > 0 ? '#8a2810' : '#1a1c0c';
+        }
+        // Head with antennae
+        const hx = segs * sw2 * 0.5;
+        ctx.fillStyle = '#2a2810';
+        ctx.fillRect(hx - u * 0.4, -u * 0.4, u * 0.7, u * 0.8);
+        ctx.fillStyle = '#0e1008';
+        ctx.fillRect(hx + u * 0.3, -u * 0.8, u * 0.1, u * 0.5);
+        ctx.fillRect(hx + u * 0.3, u * 0.3, u * 0.1, u * 0.5);
+        const hpPct = c.hp / c.maxHp;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(-u * 1.8, -u * 1.1, u * 3.6, u * 0.22);
+        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
+        ctx.fillRect(-u * 1.8, -u * 1.1, u * 3.6 * hpPct, u * 0.22);
+
+      } else if (c.type === 'pillbug') {
+        // Round armoured oval — curls up when badly hurt
+        const curled = c.hp < c.maxHp * 0.35;
+        const bodyW = curled ? u * 1.4 : u * 2.2;
+        const bodyH = curled ? u * 1.4 : u * 0.9;
+        ctx.fillStyle = c.hitFlash > 0 ? '#607820' : '#3a4818';
+        ctx.fillRect(-bodyW * 0.5, -bodyH * 0.5, bodyW, bodyH);
+        // Armour segments
+        ctx.fillStyle = '#2a3410';
+        for (let i = -1; i <= 1; i++)
+          ctx.fillRect(i * bodyW * 0.28 - u * 0.05, -bodyH * 0.5, u * 0.1, bodyH);
+        // Highlight top
+        ctx.fillStyle = 'rgba(120,160,60,0.35)';
+        ctx.fillRect(-bodyW * 0.5, -bodyH * 0.5, bodyW, bodyH * 0.3);
+        // Tiny head
+        if (!curled) {
+          ctx.fillStyle = '#2a3010';
+          ctx.fillRect(bodyW * 0.5 - u * 0.1, -u * 0.25, u * 0.4, u * 0.5);
+          // Antennae
+          ctx.fillStyle = '#1a2008';
+          ctx.fillRect(bodyW * 0.5 + u * 0.2, -u * 0.4, u * 0.5, u * 0.1);
+          ctx.fillRect(bodyW * 0.5 + u * 0.2,  u * 0.3, u * 0.5, u * 0.1);
+          // Legs (tiny)
+          ctx.fillStyle = '#1e2610';
+          for (let i = -1; i <= 1; i++) {
+            ctx.fillRect(i * u * 0.55, bodyH * 0.5, u * 0.1, u * 0.45);
+            ctx.fillRect(i * u * 0.55, -bodyH * 0.5 - u * 0.45, u * 0.1, u * 0.45);
+          }
+        }
+        const hpPct = c.hp / c.maxHp;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(-u * 1.2, -u * 1.2, u * 2.4, u * 0.22);
+        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
+        ctx.fillRect(-u * 1.2, -u * 1.2, u * 2.4 * hpPct, u * 0.22);
+
+      } else if (c.type === 'cricket') {
+        // Elongated body, large jumping rear legs
+        ctx.fillStyle = c.hitFlash > 0 ? '#7a5820' : '#2e2810';
+        ctx.fillRect(-u * 1.4, -u * 0.4, u * 2.2, u * 0.8); // body
+        // Wing cover (slightly raised)
+        ctx.fillStyle = '#3a3218';
+        ctx.fillRect(-u * 0.6, -u * 0.5, u * 1.2, u * 0.18);
+        // Head
+        ctx.fillStyle = '#241e0c';
+        ctx.fillRect(u * 0.8, -u * 0.38, u * 0.6, u * 0.75);
+        // Long antennae
+        ctx.fillStyle = '#1a1408';
+        ctx.fillRect(u * 1.2, -u * 0.5, u * 0.12, u * 1.0);
+        ctx.fillRect(u * 1.3, -u * 0.5, u * 0.8, u * 0.1);
+        ctx.fillRect(u * 1.3,  u * 0.4, u * 0.8, u * 0.1);
+        // Large rear jumping legs (L-shaped)
+        ctx.fillStyle = '#1e1808';
+        ctx.fillRect(-u * 1.4, -u * 0.35, u * 0.12, u * 0.7 + leg * 0.4);  // femur
+        ctx.fillRect(-u * 1.4, u * 0.35 + leg * 0.4, u * 0.6, u * 0.12);    // tibia
+        ctx.fillRect(-u * 1.4, -u * 0.35 - leg * 0.4, u * 0.6, u * 0.12);   // upper
+        // Small front legs
+        ctx.fillRect(u * 0.1, u * 0.4, u * 0.1, u * 0.45);
+        ctx.fillRect(u * 0.5, u * 0.4, u * 0.1, u * 0.45);
+        const hpPct = c.hp / c.maxHp;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(-u * 1.4, -u * 1.1, u * 2.8, u * 0.22);
+        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
+        ctx.fillRect(-u * 1.4, -u * 1.1, u * 2.8 * hpPct, u * 0.22);
+
+      } else { // worm
+        // Simple pink-brown segmented worm wriggling along
+        const wave = Math.sin(c.animFrame * 1.2) * u * 0.15;
+        ctx.fillStyle = c.hitFlash > 0 ? '#c07060' : '#8a5040';
+        for (let s = 0; s < 5; s++) {
+          const sx = (s - 2.5) * u * 0.45;
+          const sy2 = (s % 2 === 0 ? wave : -wave);
+          ctx.fillRect(sx - u * 0.2, sy2 - u * 0.22, u * 0.42, u * 0.44);
+        }
+        // Tip / head
+        ctx.fillStyle = '#a06050';
+        ctx.fillRect(u * 0.8, -u * 0.18, u * 0.3, u * 0.36);
+        const hpPct = c.hp / c.maxHp;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(-u * 1.1, -u * 0.9, u * 2.2, u * 0.2);
+        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
+        ctx.fillRect(-u * 1.1, -u * 0.9, u * 2.2 * hpPct, u * 0.2);
       }
 
       ctx.globalAlpha = 1;

@@ -104,11 +104,21 @@ function tileColor(type, x, y, world) {
         ? `rgb(${82+j|0},${55+j|0},${24+j|0})`
         : `rgb(${66+j|0},${44+j|0},${18+j|0})`;
 
-    case TILE.CHAMBER:
-      // Slightly lighter than tunnel — larger open space
+    case TILE.CHAMBER: {
+      const ct = world.chamberType[world.idx(x, y)];
+      if (ct === 1) // Queen chamber — rich warm amber
+        return `rgb(${118+j|0},${78+j|0},${32+j|0})`;
+      if (ct === 2) // Egg/nursery — soft cream-gold
+        return `rgb(${108+j|0},${78+j|0},${42+j|0})`;
+      if (ct === 3) // Food storage — deep ochre
+        return `rgb(${100+j|0},${70+j|0},${26+j|0})`;
+      if (ct === 4) // Deep gallery — darker, cooler
+        return `rgb(${72+j|0},${50+j|0},${24+j|0})`;
+      // Generic runtime-dug chamber
       return depth < 0.4
         ? `rgb(${96+j|0},${65+j|0},${30+j|0})`
         : `rgb(${78+j|0},${52+j|0},${22+j|0})`;
+    }
 
     case TILE.GLASS:   return '#9ad0f0';
     case TILE.FOOD:    return '#e8b820';
@@ -139,7 +149,12 @@ function drawTile(ctx, type, x, y, world) {
   }
 
   if (type === TILE.CHAMBER && world.get(x, y - 1) !== TILE.CHAMBER) {
-    ctx.fillStyle = 'rgba(220,170,80,0.40)';
+    const ct = world.chamberType[i];
+    const ceilColor = ct === 1 ? 'rgba(255,200,80,0.65)'   // queen — bright gold
+                    : ct === 2 ? 'rgba(240,210,120,0.50)'  // egg — warm cream
+                    : ct === 3 ? 'rgba(220,160,60,0.45)'   // food — amber
+                    :            'rgba(220,170,80,0.40)';  // generic/deep
+    ctx.fillStyle = ceilColor;
     ctx.fillRect(px, py, ts, 1);
   }
 
