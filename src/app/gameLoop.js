@@ -5,7 +5,7 @@ export class GameLoop {
     this.running = false;
     this._lastTime = 0;
     this._raf = null;
-    this.speed = 0;
+    this.speed = 1;
     this.simAccum = 0;
     this.SIM_STEP = 16; // ms per sim tick
   }
