@@ -1,11 +1,18 @@
 const MAX = 7;
 const entries = [];
+const listeners = [];
+
+// Hear about each event as it is logged
+export function onEvent(fn) {
+  listeners.push(fn);
+}
 
 export function logEvent(msg) {
   if (entries.length && entries[0] === msg) return;
   entries.unshift(msg);
   if (entries.length > MAX) entries.pop();
   _render();
+  for (const fn of listeners) fn(msg);
 }
 
 function _render() {

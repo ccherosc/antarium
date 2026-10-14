@@ -9,6 +9,7 @@ export const TILE = {
   WATER: 7,
   EGG: 8,
   ANTHILL: 9,   // displaced soil piled above surface by dirt-carrying ants
+  ROCK: 10,     // buried stone — tunnels have to route around it
 };
 
 export const ROLE = {
@@ -19,6 +20,7 @@ export const ROLE = {
   NURSE: 4,
   EXPLORER: 5,  // seeks organics in soil, converts deposits to underground food
   ROGUE: 6,     // rare chaos ant — ignores rules, digs deep, fights hard
+  ALATE: 7,     // winged reproductive — only appears for the nuptial flight
 };
 
 export const STATE = {
@@ -34,7 +36,22 @@ export const STATE = {
   DUMPING_DIRT: 9, // carrying excavated soil up to the surface anthill
   DEFENDING:   10, // rushing a surface creature and attacking it
   FEASTING:    11, // collecting food chunks from a defeated creature corpse
+  GOING_TO_DIG:   12, // walking to the face of a dig project
+  FETCHING_BROOD: 13, // walking to a loose egg to pick it up
+  CARRYING_BROOD: 14, // carrying an egg to a nursery
+  PATROLLING:     15, // walking to another chamber
+  ATTENDING:      16, // grooming / feeding the queen
+  GOING_TO_REST:  17, // heading to the home chamber to sleep
+  SCOUTING:       18, // roaming the surface looking for food
+  FLYING:         19, // alate on its nuptial flight
+  HAULING:        20, // moving food from the store to the queen / nursery
 };
+
+// What an ant holds in its mandibles
+export const CARRY = { NONE: 0, FOOD: 1, WATER: 2, DIRT: 3, EGG: 4 };
+
+// Chamber purpose — same ids world.chamberType has always used
+export const ROOM = { GENERIC: 0, QUEEN: 1, NURSERY: 2, FOOD: 3, DEEP: 4 };
 
 export const CONFIG = {
   WORLD_WIDTH: 240,
@@ -55,15 +72,34 @@ export const CONFIG = {
   INITIAL_EGGS: 6,
 
   ANT_MOVE_TICKS: 3,
+  ANT_SPEED: 0.15,             // tiles per tick — ants glide between tile centres
+  ANT_TURN_RATE: 0.30,         // radians per tick the body can swing round
   DIG_TICKS: 220,
-  EGG_HATCH_TICKS: 900,
+  EGG_HATCH_TICKS: 6000,       // egg → larva → pupa → ant: a little under half a day
   QUEEN_EGG_INTERVAL: 500,
   QUEEN_REST_INTERVAL: 80,
 
   // ── Aging & death ────────────────────────────────────────────────────────
-  ANT_LIFESPAN_MIN: 4500,      // ticks — ~2 min real at speed 2
-  ANT_LIFESPAN_MAX: 10000,     // ticks — ~4.5 min real at speed 2
+  ANT_LIFESPAN_MIN: 30000,     // ticks — about two days
+  ANT_LIFESPAN_MAX: 60000,     // ticks — about four days
   ANT_STARVATION_TICKS: 320,   // ticks at max hunger with no food before death
+
+  // ── Growth — the colony the nest can support ─────────────────────────────
+  POP_BASE: 50,
+  POP_PER_TILE: 0.07,          // extra ants per excavated tile
+  POP_MAX: 700,
+  EGG_FOOD_COST: 4,
+  MAX_OPEN_FRACTION: 0.27,     // digging stops once this much soil is hollowed out
+
+  // ── Loads ────────────────────────────────────────────────────────────────
+  FOOD_PER_TRIP: 6,
+  WATER_PER_TRIP: 6,
+  STORE_PER_TILE: 8,           // food a store chamber holds per floor tile
+
+  // ── Anthill ──────────────────────────────────────────────────────────────
+  DIRT_GRAIN: 0.12,            // mound tiles added per load of dirt
+  HILL_MAX: 7,                 // tallest the mound gets, in tiles
+  HILL_SPREAD: 26,             // how far it sprawls either side of the entrance
 
   // ── Food / water ─────────────────────────────────────────────────────────
   FOOD_STORE_MAX: 1000,
@@ -89,7 +125,8 @@ export const CONFIG = {
   STRESS_WATER_LOW:  140,
   STRESS_WATER_CRIT: 40,
 
-  TICKS_PER_DAY: 600,
+  DAY_TICKS: 14400,            // one day/night cycle — just under 4 minutes at 1×
+  DAY_START_PHASE: 0.30,       // new colonies start in the early morning
   FOOD_RESPAWN_INTERVAL: 700,
   FOOD_RESPAWN_COUNT: 3,
 

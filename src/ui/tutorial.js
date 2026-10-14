@@ -1,15 +1,19 @@
 const STEPS = [
   {
     title: 'Welcome to Pixel Ants',
-    body: 'Your queen — the red ant — is the heart of the colony. She lays eggs that hatch into workers, diggers, foragers, and nurses. Keep her fed and she keeps the colony growing.',
+    body: 'Behind the glass a queen and her first workers are settling in. She lays her eggs in the royal chamber, nurses carry them to the nursery, foragers stock the granaries, and diggers keep extending the nest so the colony has room to grow.',
   },
   {
-    title: 'Drop food on the surface',
-    body: 'Click anywhere on the golden surface strip at the top of the ant farm to drop food. Foragers will climb up, collect it, and leave pheromone trails so others follow the same route.',
+    title: 'Feed the colony',
+    body: 'Click on the grass to drop food, or straight into a tunnel. Pick Water in the TOOLS panel to add water the same way. Foragers carry it home and leave scent trails for the others to follow.',
+  },
+  {
+    title: 'A living world',
+    body: 'Days turn into nights: foragers set out at dawn and the nest beds down after dark. Rain sends them below, visitors wander in across the meadow, and once the colony is big enough its winged ants take to the sky.',
   },
   {
     title: 'Read the dashboard',
-    body: 'Food Store and Water Store are your critical stats. Vitality and Happiness track queen health. The Ant News reports hatches, deaths, and warnings in real time.',
+    body: 'Food Store and Water Store show what is laid by. Vitality and Happiness follow the queen. Nest Capacity is how many ants the tunnels dug so far can house. Ant News reports hatchings, losses and visitors as they happen.',
   },
   {
     title: 'Survival mode',   // overwritten at show() time
@@ -24,7 +28,7 @@ const MODE_STEPS = {
   },
   screensaver: {
     title: 'Screensaver mode',
-    body: 'Sit back. Food and water replenish automatically, the colony grows indefinitely, and diggers never stop expanding. Put it full-screen and watch a master colony build itself.',
+    body: 'Sit back. Leave the mouse alone for a few seconds and the camera sets off on a tour of the nest by itself; move it to take over again. F is full screen, C starts or stops the tour, H hides the panel.',
   },
 };
 
@@ -51,7 +55,7 @@ export class Tutorial {
 
   show(mode) {
     if (localStorage.getItem(STORAGE_KEY)) return;
-    STEPS[3] = MODE_STEPS[mode] ?? MODE_STEPS.screensaver;
+    STEPS[STEPS.length - 1] = MODE_STEPS[mode] ?? MODE_STEPS.screensaver;
     this._step = 0;
     this._render();
     this._el?.classList.remove('hidden');

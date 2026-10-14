@@ -1,4 +1,16 @@
 import { GameState } from '../gameState.js';
+import { clockText } from './hud.js';
+
+const WEATHER = { clear: 'CLEAR', gathering: 'CLOUDING OVER', rain: 'RAIN' };
+
+function timeOfDay(phase) {
+  if (phase < 0.21 || phase > 0.82) return 'NIGHT';
+  if (phase < 0.30) return 'DAWN';
+  if (phase < 0.45) return 'MORNING';
+  if (phase < 0.56) return 'MIDDAY';
+  if (phase < 0.72) return 'AFTERNOON';
+  return 'DUSK';
+}
 
 export class Dashboard {
   constructor() {
@@ -8,7 +20,7 @@ export class Dashboard {
       'stat-food', 'stat-water', 'stat-vitality',
       'stat-happiness', 'stat-birthrate',
       'stat-tunnels', 'stat-chambers',
-      'stat-day',
+      'stat-day', 'stat-sky', 'stat-capacity',
     ];
     for (const id of ids) {
       this._els[id] = document.getElementById(id);
@@ -19,7 +31,6 @@ export class Dashboard {
       this._bars[id] = document.getElementById(`bar-${id}`);
     }
     this._tickEl = document.getElementById('sim-tick');
-    this._tick = 0;
   }
 
   _set(id, val) {
@@ -27,37 +38,42 @@ export class Dashboard {
     if (el && el.textContent !== String(val)) el.textContent = val;
   }
 
-  _setBar(id, pct) {
+  // health: what the colour goes by, where that is not how full the bar is
+  _setBar(id, pct, health = pct) {
     const el = this._bars[id];
     if (!el) return;
     const p = Math.round(Math.max(0, Math.min(100, pct)));
     el.style.width = p + '%';
-    el.style.background = p > 70 ? '#4a8' : p > 40 ? '#a84' : '#a44';
+    el.style.background = health > 70 ? '#4a8' : health > 40 ? '#a84' : '#a44';
   }
 
   update(stats, world, antSystem) {
-    this._tick++;
+    const sky = world.sky;
+    const food = stats.foodSupply, water = stats.waterSupply;
 
     this._set('stat-population', stats.population);
+    this._set('stat-capacity', stats.capacity);
     this._set('stat-eggs', stats.eggs);
     this._set('stat-queen-health', Math.round(stats.queenHealth) + '%');
-    this._set('stat-food', Math.round(stats.foodSupply));
-    this._set('stat-water', Math.round(stats.waterSupply));
+    this._set('stat-food', `${Math.round(food)} / ${Math.round(world.foodCap)}`);
+    this._set('stat-water', `${Math.round(water)} / ${Math.round(world.waterCap)}`);
     this._set('stat-vitality', stats.vitality + '%');
     this._set('stat-happiness', stats.happiness + '%');
     this._set('stat-birthrate', stats.birthRate + '%');
     this._set('stat-tunnels', stats.tunnelLength);
     this._set('stat-chambers', stats.chamberCount);
-    this._set('stat-day', 'DAY ' + stats.day);
+    this._set('stat-day', `DAY ${stats.day} · ${clockText(sky.phase)}`);
+    this._set('stat-sky', `${timeOfDay(sky.phase)} · ${WEATHER[sky.weather] || 'CLEAR'}`);
 
     this._setBar('queen-health', stats.queenHealth);
-    this._setBar('food', (stats.foodSupply / 1000) * 100);
-    this._setBar('water', (stats.waterSupply / 1000) * 100);
+    // the bars show how full the stores are; their colour, how long that will last
+    this._setBar('food', (food / world.foodCap) * 100, (food / 300) * 100);
+    this._setBar('water', (water / world.waterCap) * 100, (water / 200) * 100);
     this._setBar('vitality', stats.vitality);
     this._setBar('happiness', stats.happiness);
     this._setBar('birthrate', stats.birthRate);
 
-    if (this._tickEl) this._tickEl.textContent = this._tick;
+    if (this._tickEl) this._tickEl.textContent = world.tick;
 
     const modeEl = document.getElementById('stat-mode');
     if (modeEl) {

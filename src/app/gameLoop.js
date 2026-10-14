@@ -34,8 +34,11 @@ export class GameLoop {
       this.simAccum -= this.SIM_STEP;
       steps++;
     }
+    // Couldn't keep up: drop the backlog rather than let it pile up
+    if (this.simAccum >= this.SIM_STEP) this.simAccum = this.SIM_STEP * 0.999;
 
-    this.onRender();
+    // How far into the next tick this frame falls, so movement can be drawn in between
+    this.onRender(this.speed > 0 ? this.simAccum / this.SIM_STEP : 1, dt);
     this._raf = requestAnimationFrame(this._tick.bind(this));
   }
 

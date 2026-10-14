@@ -1,6 +1,7 @@
 import { TILE, CONFIG } from '../config.js';
 
 const C = CONFIG;
+const SR = C.SURFACE_ROW;
 
 let offscreen = null;
 let offCtx = null;
@@ -70,175 +71,214 @@ function _hash(x, y) {
   return ((h ^ (h >>> 16)) >>> 0) & 0xff;
 }
 
+const isEarth = t => t === TILE.SOIL || t === TILE.ROCK || t === TILE.SURFACE;
+const isOpen  = t => t === TILE.TUNNEL || t === TILE.CHAMBER || t === TILE.FOOD || t === TILE.WATER || t === TILE.EGG;
+
+// Chamber floors, as a tint of the bare hollow colour: [scale r, g, b, add r, g, b]
+const ROOM_TINT = [
+  [1.12, 1.12, 1.12,  0, 0,  0],   // living quarters
+  [1.36, 1.34, 1.20, 14, 6,  0],   // queen — rich warm amber
+  [1.28, 1.34, 1.42,  8, 8,  6],   // nursery — soft cream
+  [1.22, 1.20, 1.00,  8, 4,  0],   // food store — deep ochre
+  [0.82, 1.02, 1.30,  0, 4, 10],   // fungus garden — cool and damp
+];
+
 function tileColor(type, x, y, world) {
   const n = _hash(x, y);
   const j = (n / 255) * 10 - 5; // ±5 brightness variation
 
-  const depth = y / world.height;
+  // 0 at the surface → 1 at the bottom of the farm
+  const k = Math.max(0, Math.min(1, (y - SR) / (world.height - SR)));
 
   switch (type) {
-    case TILE.ANTHILL: // rendered separately after sky; treat as air on the world canvas
-    case TILE.AIR:
-      return '#7ab8d8'; // sky blue (covered by sky gradient)
-
     case TILE.SURFACE:
-      // Top surface row: grass patches; lower row: dirt
-      if (y === C.SURFACE_ROW) {
-        if (n > 175) return '#4a7820';
-        if (n > 135) return '#5a8428';
-        return '#8a6432';
-      }
-      return n > 140 ? '#9a7038' : '#a87c40';
+      // A dark, rooty skin of humus over the paler earth below
+      return y === SR ? `rgb(${92+j|0},${64+j|0},${32+j|0})` : `rgb(${124+j|0},${86+j|0},${44+j|0})`;
 
     case TILE.SOIL: {
-      // Bright warm earth — visible through glass in sunlight
-      if (depth < 0.22) return `rgb(${158+j|0},${112+j|0},${58+j|0})`;
-      if (depth < 0.50) return `rgb(${128+j|0},${88+j|0},${44+j|0})`;
-      if (depth < 0.75) return `rgb(${100+j|0},${68+j|0},${33+j|0})`;
-      return `rgb(${78+j|0},${52+j|0},${24+j|0})`;
+      // Warm sunlit topsoil shading down to dark damp clay, laid down in wavy strata
+      const wave = y + Math.sin(x * 0.045) * 3.2 + Math.sin(x * 0.118 + 2) * 1.6;
+      const band = Math.sin(wave * 0.52);
+      // loose soil is a shade paler than the compacted lumps the tunnels wind around
+      const s = j + (band > 0.8 ? -10 : band < -0.88 ? 7 : 0) + (70 - world.hardness[world.idx(x, y)]) * 0.12;
+      return `rgb(${168 - 94 * k + s | 0},${120 - 72 * k + s | 0},${64 - 40 * k + s * 0.6 | 0})`;
     }
 
     case TILE.TUNNEL:
-      // Darker than soil — hollow channels catch less light
-      return depth < 0.4
-        ? `rgb(${82+j|0},${55+j|0},${24+j|0})`
-        : `rgb(${66+j|0},${44+j|0},${18+j|0})`;
+      // Hollows catch less light than the soil around them, and less still deep down
+      return `rgb(${86 - 44 * k + j | 0},${58 - 30 * k + j | 0},${28 - 14 * k + j * 0.6 | 0})`;
 
     case TILE.CHAMBER: {
-      const ct = world.chamberType[world.idx(x, y)];
-      if (ct === 1) // Queen chamber — rich warm amber
-        return `rgb(${118+j|0},${78+j|0},${32+j|0})`;
-      if (ct === 2) // Egg/nursery — soft cream-gold
-        return `rgb(${108+j|0},${78+j|0},${42+j|0})`;
-      if (ct === 3) // Food storage — deep ochre
-        return `rgb(${100+j|0},${70+j|0},${26+j|0})`;
-      if (ct === 4) // Deep gallery — darker, cooler
-        return `rgb(${72+j|0},${50+j|0},${24+j|0})`;
-      // Generic runtime-dug chamber
-      return depth < 0.4
-        ? `rgb(${96+j|0},${65+j|0},${30+j|0})`
-        : `rgb(${78+j|0},${52+j|0},${22+j|0})`;
+      const t = ROOM_TINT[world.chamberType[world.idx(x, y)]] || ROOM_TINT[0];
+      return `rgb(${(86 - 44 * k) * t[0] + t[3] + j | 0},${(58 - 30 * k) * t[1] + t[4] + j | 0},${(28 - 14 * k) * t[2] + t[5] + j * 0.6 | 0})`;
     }
 
-    case TILE.GLASS:   return '#9ad0f0';
-    case TILE.FOOD:    return '#e8b820';
-    case TILE.WATER:   return '#3488d8';
+    case TILE.ROCK:    return `rgb(${114 - 40 * k + j * 2 | 0},${110 - 40 * k + j * 2 | 0},${106 - 36 * k + j * 2 | 0})`;
+    case TILE.GLASS:   return '#1a2530';
     case TILE.EGG:     return '#f0e8c8';
     default:           return '#8a6432';
   }
 }
 
-function drawTile(ctx, type, x, y, world) {
+function drawTile(ctx, tile, x, y, world) {
   const ts = C.TILE_SIZE;
   const px = x * ts, py = y * ts;
   const i  = world.idx(x, y);
+  let type = tile, item = 0;
+
+  // Above the ground the canvas stays clear: the sky, the mound and whatever is lying
+  // on the grass are drawn live by the renderer
+  if (type !== TILE.GLASS && (y < SR || type === TILE.AIR || type === TILE.ANTHILL)) {
+    ctx.clearRect(px, py, ts, ts);
+    return;
+  }
+
+  // Something lying in a passage: paint the passage, then the thing
+  if (type === TILE.FOOD || type === TILE.WATER) {
+    item = type;
+    type = world.under[i] === TILE.CHAMBER ? TILE.CHAMBER : TILE.TUNNEL;
+  }
 
   ctx.fillStyle = tileColor(type, x, y, world);
   ctx.fillRect(px, py, ts, ts);
 
-  // One-pixel accent lines — ceiling highlight, floor shadow
-  if (type === TILE.TUNNEL) {
-    if (world.get(x, y - 1) === TILE.SOIL || world.get(x, y - 1) === TILE.SURFACE) {
-      ctx.fillStyle = 'rgba(220,170,80,0.50)';
-      ctx.fillRect(px, py, ts, 1);
-    }
-    if (world.get(x, y + 1) === TILE.SOIL) {
-      ctx.fillStyle = 'rgba(0,0,0,0.40)';
-      ctx.fillRect(px, py + ts - 1, ts, 1);
-    }
-  }
+  const up = world.get(x, y - 1), down = world.get(x, y + 1);
 
-  if (type === TILE.CHAMBER && world.get(x, y - 1) !== TILE.CHAMBER) {
-    const ct = world.chamberType[i];
-    const ceilColor = ct === 1 ? 'rgba(255,200,80,0.65)'   // queen — bright gold
-                    : ct === 2 ? 'rgba(240,210,120,0.50)'  // egg — warm cream
-                    : ct === 3 ? 'rgba(220,160,60,0.45)'   // food — amber
-                    :            'rgba(220,170,80,0.40)';  // generic/deep
-    ctx.fillStyle = ceilColor;
-    ctx.fillRect(px, py, ts, 1);
-  }
-
+  // The frame: dark at the rim, with a lit bevel on the inside edge
   if (type === TILE.GLASS) {
-    ctx.fillStyle = 'rgba(140,210,240,0.55)';
-    ctx.fillRect(px, py, 1, ts);
-    ctx.fillStyle = 'rgba(40,100,140,0.40)';
-    ctx.fillRect(px + ts - 1, py, 1, ts);
+    const W = world.width, H = world.height, GT = C.GLASS_THICKNESS;
+    const d = Math.min(x, y, W - 1 - x, H - 1 - y);
+    if (d === 0) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(px, py, ts, ts); }
+    if (d === GT - 1) {
+      ctx.fillStyle = 'rgba(150,200,230,0.34)';
+      if (x === GT - 1) ctx.fillRect(px + ts - 1, py, 1, ts);
+      if (x === W - GT) ctx.fillRect(px, py, 1, ts);
+      if (y === GT - 1) ctx.fillRect(px, py + ts - 1, ts, 1);
+      if (y === H - GT) ctx.fillRect(px, py, ts, 1);
+    }
+    return;
   }
 
-  if (type === TILE.FOOD) {
-    // Bright centre dot so food is obvious even at far zoom
-    ctx.fillStyle = '#f8d040';
-    ctx.fillRect(px + 1, py + 1, ts - 2, ts - 2);
+  // Roots trailing down from the turf
+  if ((type === TILE.SOIL || type === TILE.SURFACE) && y <= SR + 6) {
+    const r = _hash(x + 13, 7);
+    if (r < 60 && y - SR - 1 <= (r & 3) + 1) {
+      ctx.fillStyle = 'rgba(48,30,12,0.5)';
+      ctx.fillRect(px + 1 + (((r >> 2) ^ y) & 1), py, 1, ts);
+    }
   }
 
-  if (type === TILE.WATER) {
-    ctx.fillStyle = '#4090e8';
+  if (type === TILE.SOIL) {
+    // Grain: a pale fleck here, a dark one there, the odd pebble
+    const g = _hash(x + 911, y + 373);
+    if (g < 64) {
+      ctx.fillStyle = 'rgba(255,226,170,0.11)';
+      ctx.fillRect(px + (g & 3), py + ((g >> 2) & 3), 1, 1);
+    } else if (g > 204) {
+      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      ctx.fillRect(px + (g & 1), py + ((g >> 2) & 3), 2, 1);
+    } else if (g === 100 || g === 101) {
+      ctx.fillStyle = 'rgba(176,168,156,0.55)';
+      ctx.fillRect(px + 1, py + 1, 2, 2);
+      ctx.fillStyle = 'rgba(232,226,214,0.5)';
+      ctx.fillRect(px + 1, py + 1, 1, 1);
+    }
+
+    // Organic matter specs — dark flecks visible in soil
+    if (world.organics[i] > 0.25) {
+      const o  = world.organics[i];
+      const nh = _hash(x + 77, y + 33);
+      // Primary spec — always present above threshold
+      if (nh > 160 - o * 80) {
+        ctx.fillStyle = o > 0.65 ? '#1e1810' : '#2c2418';
+        ctx.fillRect(px + (nh & 3), py + ((nh >> 2) & 3), 1, 1);
+      }
+      // Secondary spec — only for rich deposits
+      if (o > 0.55) {
+        const nh2 = _hash(x + 200, y + 150);
+        ctx.fillStyle = '#181410';
+        ctx.fillRect(px + ((nh2 & 3) ^ 2), py + (((nh2 >> 2) & 3) ^ 1), 1, 1);
+      }
+    }
+
+    // Dig-progress cracks
+    if (world.digProgress[i] > 0) {
+      const p = world.digProgress[i];
+      ctx.fillStyle = `rgba(60,38,16,${p * 0.6})`;
+      ctx.fillRect(px, py, ts, ts);
+      if (p > 0.35) {
+        ctx.fillStyle = `rgba(165,115,55,${p * 0.5})`;
+        ctx.fillRect(px + 1, py + 1, 1, ts - 2);
+      }
+      if (p > 0.65) {
+        ctx.fillStyle = `rgba(195,148,75,${p * 0.4})`;
+        ctx.fillRect(px, py + 2, ts, 1);
+      }
+    }
+    return;
+  }
+
+  if (type === TILE.ROCK) {
+    // Stones: lit along the top, shadowed underneath
+    if (up !== TILE.ROCK) { ctx.fillStyle = 'rgba(255,255,255,0.20)'; ctx.fillRect(px, py, ts, 1); }
+    if (down !== TILE.ROCK) { ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(px, py + ts - 1, ts, 1); }
+    if (world.get(x - 1, y) !== TILE.ROCK) { ctx.fillStyle = 'rgba(255,255,255,0.09)'; ctx.fillRect(px, py, 1, ts); }
+    if (world.get(x + 1, y) !== TILE.ROCK) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(px + ts - 1, py, 1, ts); }
+    return;
+  }
+
+  if (type !== TILE.TUNNEL && type !== TILE.CHAMBER) return;
+
+  // Ambient occlusion — the hollow darkens toward the earth it was cut from
+  if (isEarth(down)) {
+    ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py + ts - 1, ts, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(px, py + ts - 2, ts, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.07)'; ctx.fillRect(px, py + ts - 3, ts, 1);
+  }
+  if (isEarth(world.get(x - 1, y))) {
+    ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fillRect(px,     py, 1, ts);
+    ctx.fillStyle = 'rgba(0,0,0,0.20)'; ctx.fillRect(px + 1, py, 1, ts);
+    ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(px + 2, py, 1, ts);
+  }
+  if (isEarth(world.get(x + 1, y))) {
+    ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px + ts - 1, py, 1, ts);
+    ctx.fillStyle = 'rgba(0,0,0,0.17)'; ctx.fillRect(px + ts - 2, py, 1, ts);
+    ctx.fillStyle = 'rgba(0,0,0,0.07)'; ctx.fillRect(px + ts - 3, py, 1, ts);
+  }
+
+  // One-pixel ceiling highlight where the roof catches the light
+  if (!isOpen(up) && up !== TILE.AIR) {
+    if (type === TILE.CHAMBER) {
+      const ct = world.chamberType[i];
+      ctx.fillStyle = ct === 1 ? 'rgba(255,200,80,0.60)'    // queen — bright gold
+                    : ct === 2 ? 'rgba(240,214,150,0.46)'   // nursery — warm cream
+                    : ct === 3 ? 'rgba(220,160,60,0.42)'    // food — amber
+                    : ct === 4 ? 'rgba(120,200,190,0.30)'   // fungus garden — pale teal
+                    :            'rgba(220,170,80,0.34)';
+    } else {
+      ctx.fillStyle = 'rgba(220,170,80,0.34)';
+    }
     ctx.fillRect(px, py, ts, 1);
   }
 
-  // Organic matter specs — dark flecks visible in soil
-  if (type === TILE.SOIL && world.organics[i] > 0.25) {
-    const o  = world.organics[i];
-    const nh = _hash(x + 77, y + 33);
-    // Primary spec — always present above threshold
-    if (nh > 160 - o * 80) {
-      ctx.fillStyle = o > 0.65 ? '#1e1810' : '#2c2418';
-      ctx.fillRect(px + (nh & 3), py + ((nh >> 2) & 3), 1, 1);
-    }
-    // Secondary spec — only for rich deposits
-    if (o > 0.55) {
-      const nh2 = _hash(x + 200, y + 150);
-      ctx.fillStyle = '#181410';
-      ctx.fillRect(px + ((nh2 & 3) ^ 2), py + (((nh2 >> 2) & 3) ^ 1), 1, 1);
-    }
-  }
-
-  // Dig-progress cracks
-  if (type === TILE.SOIL && world.digProgress[i] > 0) {
-    const p = world.digProgress[i];
-    ctx.fillStyle = `rgba(110,75,38,${p * 0.65})`;
-    ctx.fillRect(px, py, ts, ts);
-    if (p > 0.35) {
-      ctx.fillStyle = `rgba(165,115,55,${p * 0.5})`;
-      ctx.fillRect(px + 1, py + 1, 1, ts - 2);
-    }
-    if (p > 0.65) {
-      ctx.fillStyle = `rgba(195,148,75,${p * 0.4})`;
-      ctx.fillRect(px, py + 2, ts, 1);
-    }
-  }
-
-  // Ambient occlusion — darken edges adjacent to soil (skip top: ceiling highlight handles it)
-  if (type === TILE.TUNNEL || type === TILE.CHAMBER) {
-    if (world.get(x, y + 1) === TILE.SOIL) {
-      ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py + ts - 1, ts, 1);
-      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(px, py + ts - 2, ts, 1);
-      ctx.fillStyle = 'rgba(0,0,0,0.07)'; ctx.fillRect(px, py + ts - 3, ts, 1);
-    }
-    if (world.get(x - 1, y) === TILE.SOIL) {
-      ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fillRect(px,     py, 1, ts);
-      ctx.fillStyle = 'rgba(0,0,0,0.20)'; ctx.fillRect(px + 1, py, 1, ts);
-      ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(px + 2, py, 1, ts);
-    }
-    if (world.get(x + 1, y) === TILE.SOIL) {
-      ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px + ts - 1, py, 1, ts);
-      ctx.fillStyle = 'rgba(0,0,0,0.17)'; ctx.fillRect(px + ts - 2, py, 1, ts);
-      ctx.fillStyle = 'rgba(0,0,0,0.07)'; ctx.fillRect(px + ts - 3, py, 1, ts);
-    }
-  }
-
-  // Pheromone tints on open tiles
-  if (type === TILE.TUNNEL || type === TILE.CHAMBER) {
-    const pf = world.pheromoneFood[i];
-    const ph = world.pheromoneHome[i];
-    if (pf > 0.08) {
-      ctx.fillStyle = `rgba(255,200,50,${Math.min(pf * 0.18, 0.28)})`;
-      ctx.fillRect(px, py, ts, ts);
-    }
-    if (ph > 0.08) {
-      ctx.fillStyle = `rgba(80,160,255,${Math.min(ph * 0.12, 0.22)})`;
-      ctx.fillRect(px, py, ts, ts);
-    }
+  if (item === TILE.FOOD) {
+    // A heap of seeds, no two tiles alike
+    const f = _hash(x + 431, y + 97);
+    const ax = f & 1, ay = (f >> 1) & 1, bx = (f >> 4) & 1;
+    ctx.fillStyle = '#8f6414';
+    ctx.fillRect(px, py + 1 + ay, ts, 3 - ay);
+    ctx.fillStyle = (f & 4) ? '#e8b830' : '#d49a26';
+    ctx.fillRect(px + ax, py + 1 + ay, 2, 2);
+    ctx.fillStyle = (f & 8) ? '#f0d060' : '#c08420';
+    ctx.fillRect(px + 2 + bx, py + 2, bx ? 1 : 1 + ((f >> 5) & 1), 2);
+    ctx.fillStyle = '#fff0a8';
+    ctx.fillRect(px + ax + ((f >> 6) & 1), py + 1 + ay, 1, 1);
+  } else if (item === TILE.WATER) {
+    // Standing water
+    ctx.fillStyle = 'rgba(46,124,206,0.86)';
+    ctx.fillRect(px, py + 2, ts, 2);
+    ctx.fillStyle = '#8cc8ff';
+    ctx.fillRect(px, py + 2, ts, 1);
   }
 }
 

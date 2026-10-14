@@ -1,32 +1,76 @@
 import { renderWorld, drawWorldToScreen, forceFullRedraw, renderPheromoneOverlay } from './renderWorld.js';
 import { renderAnts } from './renderAnts.js';
-import { TILE, CONFIG } from '../config.js';
+import { drawSky, drawSurface, glowSprite, hash } from './renderSky.js';
+import { drawCreatures } from './renderCreatures.js';
+import { Effects } from './effects.js';
+import { CONFIG, ROOM } from '../config.js';
+
+const TS = CONFIG.TILE_SIZE;
+const GT = CONFIG.GLASS_THICKNESS;
+const SR = CONFIG.SURFACE_ROW;
+const CX = CONFIG.COLONY_X;
+
+const SEEDS = ['#e8b830', '#d89a28', '#f0d060', '#b87820', '#a8b040'];
+
+// The case the glass sits in, and what it stands on
+const WOOD = {
+  edge: '#1c130b', body: '#3a2817', lip: '#5b4126',
+  base: '#2c1e11', baseTop: '#4a3420',
+  shelf: '#46311c', shelfTop: '#6b4d2c',
+  brass: '#b8923c', brassEdge: '#6a5020', engraved: '#3a2a10',
+};
 
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.effects = new Effects();
+    this.t = 0;          // seconds of real time, for whatever sways, pulses or twinkles
+    this.drift = 0;      // how far the clouds have blown
+    this.hud = true;     // the zoom read-out; switched off while the farm is left to itself
+    this._zoom = null;   // what the read-out last saw, and when it last changed
+    this._zoomT = -9;
     this._firstFrame = true;
+    this._vignette = null;
+    this._decor = [];    // fungus-garden mushrooms, rebuilt when the rooms change
+    this._decorVer = -1;
   }
 
-  render(camera, world, antSystem, queen, creatures = null) {
+  // alpha: how far this frame falls between two simulation ticks
+  render(camera, sim, alpha = 1, frameMs = 16, speed = 1) {
+    const { world, sky, antSystem, queen, creatures } = sim;
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
 
-    ctx.fillStyle = '#060402';
-    ctx.fillRect(0, 0, w, h);
+    const dt = Math.min(0.1, frameMs / 1000);
+    this.t += dt;
+    this.drift += dt * speed;
+    this.effects.update(sim, dt * Math.min(1, speed));
+
+    this._drawRoom(ctx, camera, world, sky, w, h);
 
     if (this._firstFrame) {
       forceFullRedraw(world);
       this._firstFrame = false;
     }
 
-    const worldCanvas = renderWorld(camera, world);
-    drawWorldToScreen(ctx, worldCanvas, camera);
+    // The sky goes down first: the world canvas is clear above the ground line
+    drawSky(ctx, camera, world, sky, this.t, this.drift);
+    drawWorldToScreen(ctx, renderWorld(camera, world), camera);
+    this._drawLight(ctx, camera, world, sky);
 
-    this._drawSky(ctx, camera, world);
-    this._drawAnthill(ctx, camera, world);
+    // Whatever lives in the farm stays behind its glass: the grass grows right up
+    // to it, a visitor walks in from behind the frame, and the winged ants are lost
+    // to sight at the top of it
+    const [gx, gy] = camera.worldToScreen(GT * TS, GT * TS);
+    const [hx, hy] = camera.worldToScreen((world.width - GT) * TS, (world.height - GT) * TS);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx, gy, hx - gx, hy - gy);
+    ctx.clip();
+
+    drawSurface(ctx, camera, world, sky, this.t);
 
     const pherCanvas = renderPheromoneOverlay(world);
     if (pherCanvas) {
@@ -34,478 +78,310 @@ export class Renderer {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(
         pherCanvas, sx, sy,
-        pherCanvas.width  * CONFIG.TILE_SIZE * camera.zoom,
-        pherCanvas.height * CONFIG.TILE_SIZE * camera.zoom
+        pherCanvas.width  * TS * camera.zoom,
+        pherCanvas.height * TS * camera.zoom
       );
     }
 
-    this._drawGlows(ctx, camera, world);
-    this._drawQueenGlow(ctx, camera, queen);
+    this._drawGlows(ctx, camera, sim);
+    this._drawRooms(ctx, camera, world);
 
-    renderAnts(ctx, antSystem, queen, camera);
-    if (creatures) this._drawCreatures(ctx, camera, creatures.creatures);
+    renderAnts(ctx, antSystem, queen, camera, alpha, this.t);
+    if (creatures) drawCreatures(ctx, camera, creatures.creatures);
+    this.effects.draw(ctx, camera, sim);
+
+    ctx.restore();
 
     this._drawFrame(camera, world);
-    this._drawZoomHint(ctx, camera, w, h);
+    this._drawVignette(ctx, w, h);
+    this._drawZoom(ctx, camera);
   }
 
-  _drawSky(ctx, camera, world) {
-    const ts = CONFIG.TILE_SIZE;
-    const GT = CONFIG.GLASS_THICKNESS;
-    const SR = CONFIG.SURFACE_ROW;
+  // The room the farm stands in: a wall, a shelf, and the wooden case round the glass
+  _drawRoom(ctx, camera, world, sky, w, h) {
+    ctx.fillStyle = '#0a0d13';
+    ctx.fillRect(0, 0, w, h);
 
-    const [x0, y0]    = camera.worldToScreen(GT * ts, GT * ts);
-    // Extend gradient 4 rows below surface so sunlight bleeds into topsoil
-    const [x1, ySurf] = camera.worldToScreen((world.width - GT) * ts, (SR + 4) * ts);
-    if (ySurf <= y0 || x1 <= x0) return;
+    const u = TS * camera.zoom, W = world.width, H = world.height;
+    const [ox, oy] = camera.worldToScreen(0, 0);
+    const X = x => Math.round(ox + x * u), Y = y => Math.round(oy + y * u);
+    if (X(0) <= 0 && Y(0) <= 0 && X(W) >= w && Y(H) >= h) return;   // nothing but farm in view
 
-    const surfY = y0 + (ySurf - y0) * (SR - GT) / (SR + 4 - GT);
+    const box = (c, x0, y0, x1, y1) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(X(x0), Y(y0), X(x1) - X(x0), Y(y1) - Y(y0));
+    };
+    // a band running round the farm, from a to b tiles out from the glass
+    const ring = (c, a, b) => {
+      box(c, -b, -b, W + b, -a);
+      box(c, -b, H + a, W + b, H + b);
+      box(c, -b, -a, -a, H + a);
+      box(c, W + a, -a, W + b, H + a);
+    };
 
-    const grad = ctx.createLinearGradient(0, y0, 0, ySurf);
-    grad.addColorStop(0,    '#3a80c0');  // clear blue sky at top
-    grad.addColorStop(0.45, '#6aaee0');  // lighter mid sky
-    grad.addColorStop(0.78, '#d4a030');  // golden near surface
-    grad.addColorStop(0.88, '#e8b830');  // bright sunlight at ground
-    grad.addColorStop(1,    '#c8942000'); // fade out below surface
-    ctx.fillStyle = grad;
-    ctx.fillRect(x0, y0, x1 - x0, ySurf - y0);
+    // lamplight on the wall behind
+    const lx = X(W / 2), ly = Y(H * 0.42);
+    const lamp = ctx.createRadialGradient(lx, ly, 0, lx, ly, W * 0.8 * u);
+    lamp.addColorStop(0, 'rgba(84,100,138,0.3)');
+    lamp.addColorStop(1, 'rgba(84,100,138,0)');
+    ctx.fillStyle = lamp;
+    ctx.fillRect(0, 0, w, h);
+
+    // the shelf, edge on, and the dark under it
+    const st = Y(H + 6), sb = Y(H + 8.4);
+    const under = ctx.createLinearGradient(0, sb, 0, sb + 10 * u);
+    under.addColorStop(0, 'rgba(0,0,0,0.62)');
+    under.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = under;
+    ctx.fillRect(0, sb, w, 10 * u);
+    ctx.fillStyle = WOOD.shelf;
+    ctx.fillRect(0, st, w, sb - st);
+    ctx.fillStyle = WOOD.shelfTop;
+    ctx.fillRect(0, st, w, Math.max(1, Math.round(u * 0.4)));
+    ctx.fillStyle = WOOD.edge;
+    ctx.fillRect(0, sb - Math.max(1, Math.round(u * 0.3)), w, Math.max(1, Math.round(u * 0.3)));
+
+    // the plinth, with its brass plate
+    box(WOOD.base, -4, H + 2, W + 4, H + 6);
+    box(WOOD.baseTop, -4, H + 2, W + 4, H + 2.5);
+    box(WOOD.edge, -4, H + 5.5, W + 4, H + 6);
+    box(WOOD.brassEdge, W / 2 - 19, H + 2.9, W / 2 + 19, H + 5.2);
+    box(WOOD.brass, W / 2 - 18.6, H + 3.2, W / 2 + 18.6, H + 4.9);
+    if (u >= 4) {
+      ctx.font = `bold ${Math.round(u * 1.4)}px 'Courier New', monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = WOOD.engraved;
+      ctx.fillText('P I X E L   A N T S', X(W / 2), (Y(H + 3.2) + Y(H + 4.9)) / 2 + 0.5);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    // the frame
+    ring(WOOD.body, 0, 2);
+    ring(WOOD.lip, 0, 0.4);
+    ring(WOOD.edge, 1.6, 2);
+
+    // the room dims with the day
+    const dark = (1 - sky.light) * 0.5;
+    if (dark > 0.01) {
+      ctx.fillStyle = `rgba(3,4,10,${dark})`;
+      ctx.fillRect(0, 0, w, h);
+    }
   }
 
-  _drawAnthill(ctx, camera, world) {
-    const ts   = CONFIG.TILE_SIZE;
-    const SR   = CONFIG.SURFACE_ROW;
-    const CX   = CONFIG.COLONY_X;
-    const zoom = camera.zoom;
-    const sw   = ts * zoom;
+  // Daylight soaking into the topsoil; the blue of night over everything below ground
+  _drawLight(ctx, camera, world, sky) {
+    const u = TS * camera.zoom;
+    const [ox, oy] = camera.worldToScreen(0, 0);
+    const x = ox + GT * u, w = (world.width - GT * 2) * u;
+    const y = oy + SR * u, h = (world.height - GT - SR) * u;
 
-    // Pre-compute column heights so we can shade the mound contour
-    const colHeight = new Int16Array(world.width);
-    for (let x = 0; x < world.width; x++) {
-      for (let y = SR - 1; y >= 0; y--) {
-        if (world.get(x, y) === TILE.ANTHILL) colHeight[x]++;
-        else break;
+    const sun = sky.light * (1 - 0.75 * sky.overcast);
+    if (sun > 0.02) {
+      const g = ctx.createLinearGradient(0, y, 0, y + 14 * u);
+      g.addColorStop(0, `rgba(255,214,140,${0.2 * sun})`);
+      g.addColorStop(1, 'rgba(255,214,140,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, 14 * u);
+    }
+
+    const dark = (1 - sky.light) * 0.44 + sky.overcast * sky.light * 0.12;
+    if (dark > 0.01) {
+      ctx.fillStyle = `rgba(6,9,32,${dark})`;
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+
+  // Light that the nest makes for itself. It is always there, but it is after dark,
+  // with the soil dimmed, that it shows.
+  _drawGlows(ctx, camera, sim) {
+    const { world, sky, queen } = sim;
+    const u = TS * camera.zoom, W = world.width, t = this.t;
+    const [ox, oy] = camera.worldToScreen(0, 0);
+    const cw = camera.cw, ch = camera.ch;
+    const k = 0.5 + 0.5 * (1 - sky.light);
+
+    const glow = (sprite, x, y, rx, ry, a) => {
+      if (a <= 0.004) return;
+      const sx = ox + x * u, sy = oy + y * u, w = rx * u, h = ry * u;
+      if (sx + w < 0 || sx - w > cw || sy + h < 0 || sy - h > ch) return;
+      ctx.globalAlpha = Math.min(1, a);
+      ctx.drawImage(sprite, sx - w, sy - h, w * 2, h * 2);
+    };
+
+    const gold  = glowSprite(255, 190, 90);
+    const cream = glowSprite(255, 216, 176);
+    const amber = glowSprite(255, 166, 56);
+    const teal  = glowSprite(70, 232, 200);
+    const blue  = glowSprite(90, 170, 255);
+
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = true;
+
+    for (const c of world.chambers) {
+      if (!c.built) continue;
+      const x = c.cx + 0.5, y = c.cy + 0.5, rx = c.rx * 2.3 + 2, ry = c.ry * 2.3 + 2;
+      if (c.type === ROOM.QUEEN) {
+        glow(gold, x, y, rx, ry, (0.36 + 0.04 * Math.sin(t * 1.3) + queen.layPulse * 0.22) * k);
+      } else if (c.type === ROOM.NURSERY) {
+        glow(cream, x, y, rx, ry, (0.07 + 0.25 * Math.min(1, c.brood / Math.max(1, c.cap))) * k);
+      } else if (c.type === ROOM.FOOD) {
+        glow(amber, x, y, rx, ry, (0.06 + 0.22 * Math.min(1, c.held / Math.max(1, c.cap))) * k);
+      } else if (c.type === ROOM.DEEP) {
+        glow(teal, x, y, rx, ry, (0.2 + 0.07 * Math.sin(t * 0.7 + c.id * 1.9)) * k);
       }
     }
-    const peakHeight = Math.max(...colHeight);
-    if (peakHeight === 0) return; // nothing to draw yet
 
-    for (let x = 0; x < world.width; x++) {
-      for (let y = 0; y < SR; y++) {
-        if (world.get(x, y) !== TILE.ANTHILL) continue;
-        const [sx, sy] = camera.worldToScreen(x * ts, y * ts);
-        if (sx < -sw || sx > camera.cw || sy < -sw || sy > camera.ch) continue;
+    // The queen herself, brightest as an egg is laid
+    glow(gold, queen.x, queen.y, 5, 5, 0.3 + queen.layPulse * 0.5);
 
-        // How deep in the pile is this tile? (0 = top surface of mound)
-        const depthInPile = SR - 1 - y;
-        const isTop = depthInPile === 0 || world.get(x, y - 1) !== TILE.ANTHILL;
+    // Food and water lying about underground
+    for (const i of world.foodTiles) {
+      const y = (i / W) | 0;
+      if (y >= SR) glow(amber, i % W + 0.5, y + 0.5, 2.6, 2.6, 0.09 * k);   // a seam of them adds up
+    }
+    for (const i of world.waterTiles) {
+      const y = (i / W) | 0;
+      if (y >= SR) glow(blue, i % W + 0.5, y + 0.6, 2.4, 2, 0.11 * k);
+    }
 
-        // Hash for stable per-tile noise
-        const n = ((x * 374761393 + y * 668265263) * 1274126177 >>> 0) & 0xff;
-        const j = (n / 255) * 14 - 7;
-
-        // Colour: top of pile lighter (sunlit), base darker (shadowed)
-        const topBoost = isTop ? 14 : 0;
-        const r = Math.max(0, Math.min(255, 148 + j + topBoost | 0));
-        const g = Math.max(0, Math.min(255, 100 + j + topBoost | 0));
-        const b = Math.max(0, Math.min(255,  50 + j + topBoost | 0));
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(sx, sy, sw, sw);
-
-        // Left-shadow gives the pile a 3-D rounded look
-        ctx.fillStyle = 'rgba(0,0,0,0.20)';
-        ctx.fillRect(sx, sy, sw * 0.28, sw);
-
-        // Sunlit top edge
-        if (isTop) {
-          ctx.fillStyle = 'rgba(255,210,120,0.28)';
-          ctx.fillRect(sx, sy, sw, sw * 0.35);
-        }
-
-        // Scattered dirt specks
-        if ((n & 0x1c) === 0) {
-          ctx.fillStyle = 'rgba(0,0,0,0.35)';
-          ctx.fillRect(sx + ((n & 3)) * sw * 0.25, sy + ((n >> 2) & 3) * sw * 0.25, sw * 0.22, sw * 0.22);
-        }
+    // Mushroom caps in the fungus gardens
+    if (u >= 2) {
+      for (const m of this._mushrooms(world)) {
+        glow(teal, m.x, m.y - m.h, 1.3, 1.3, (0.3 + 0.2 * Math.sin(t * 1.1 + m.p)) * k);
       }
     }
 
-    // ── Entrance tunnel mouth ──────────────────────────────────────────────
-    // Draw a dark oval opening at the base of the mound where the tunnel exits.
-    if (peakHeight > 0) {
-      const [esx, esy] = camera.worldToScreen((CX + 0.5) * ts, SR * ts);
-      const hw = sw * 1.6, hh = sw * 0.75; // half-widths of the entrance oval
-      // Dark earth rim
-      ctx.fillStyle = 'rgba(6,3,0,0.72)';
-      ctx.beginPath();
-      ctx.ellipse(esx, esy, hw, hh, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // Inner void — the actual tunnel opening
-      ctx.fillStyle = 'rgba(0,0,0,0.92)';
-      ctx.beginPath();
-      ctx.ellipse(esx, esy, hw * 0.58, hh * 0.58, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // Faint amber rim light (sunlight catching the edge)
-      ctx.strokeStyle = 'rgba(180,120,40,0.30)';
-      ctx.lineWidth = sw * 0.18;
-      ctx.beginPath();
-      ctx.ellipse(esx, esy, hw, hh, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    // After dark a little warmth spills from the way in
+    glow(amber, CX + 1, SR + 0.4, 6, 3.4, 0.3 * (1 - sky.light));
+
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
-  _drawGlows(ctx, camera, world) {
-    const ts   = CONFIG.TILE_SIZE;
-    const zoom = camera.zoom;
-    const sw   = ts * zoom;
-
-    const [wx0, wy0] = camera.screenToWorld(-sw * 4, -sw * 4);
-    const [wx1, wy1] = camera.screenToWorld(camera.cw + sw * 4, camera.ch + sw * 4);
-    const tx0 = Math.max(0, Math.floor(wx0 / ts));
-    const ty0 = Math.max(0, Math.floor(wy0 / ts));
-    const tx1 = Math.min(world.width  - 1, Math.ceil(wx1 / ts));
-    const ty1 = Math.min(world.height - 1, Math.ceil(wy1 / ts));
-
-    for (let ty = ty0; ty <= ty1; ty++) {
-      for (let tx = tx0; tx <= tx1; tx++) {
-        const t = world.get(tx, ty);
-        if (t !== TILE.FOOD && t !== TILE.WATER && t !== TILE.EGG) continue;
-
-        const [sx, sy] = camera.worldToScreen((tx + 0.5) * ts, (ty + 0.5) * ts);
-
-        if (t === TILE.FOOD) {
-          ctx.fillStyle = 'rgba(255,185,20,0.22)';
-          ctx.fillRect(sx - sw * 1.5, sy - sw * 1.5, sw * 3, sw * 3);
-          ctx.fillStyle = 'rgba(255,185,20,0.10)';
-          ctx.fillRect(sx - sw * 2.5, sy - sw * 2.5, sw * 5, sw * 5);
-          ctx.fillStyle = 'rgba(255,185,20,0.04)';
-          ctx.fillRect(sx - sw * 3.5, sy - sw * 3.5, sw * 7, sw * 7);
-        } else if (t === TILE.WATER) {
-          ctx.fillStyle = 'rgba(40,120,255,0.22)';
-          ctx.fillRect(sx - sw * 1.5, sy - sw * 1.5, sw * 3, sw * 3);
-          ctx.fillStyle = 'rgba(40,120,255,0.10)';
-          ctx.fillRect(sx - sw * 2.5, sy - sw * 2.5, sw * 5, sw * 5);
-          ctx.fillStyle = 'rgba(40,120,255,0.04)';
-          ctx.fillRect(sx - sw * 3.5, sy - sw * 3.5, sw * 7, sw * 7);
-        } else {
-          ctx.fillStyle = 'rgba(235,215,155,0.16)';
-          ctx.fillRect(sx - sw * 1.5, sy - sw * 1.5, sw * 3, sw * 3);
-          ctx.fillStyle = 'rgba(235,215,155,0.07)';
-          ctx.fillRect(sx - sw * 2.5, sy - sw * 2.5, sw * 5, sw * 5);
-        }
+  // Where the mushrooms grow: floor tiles of the fungus gardens
+  _mushrooms(world) {
+    if (this._decorVer === world.roomVersion) return this._decor;
+    this._decorVer = world.roomVersion;
+    const W = world.width, out = this._decor = [];
+    for (const c of world.chambers) {
+      if (!c.built || c.type !== ROOM.DEEP) continue;
+      for (const i of c.tiles) {
+        if (world.passable[i + W]) continue;      // only where there is a floor to grow on
+        const n = hash(i * 7 + 3);
+        if (n > 0.55) continue;
+        out.push({ x: i % W + 0.3 + hash(i * 7 + 4) * 0.4, y: ((i / W) | 0) + 1,
+                   h: 0.45 + hash(i * 7 + 5) * 0.75, p: n * 40 });
       }
     }
+    return out;
   }
 
-  _drawQueenGlow(ctx, camera, queen) {
-    const ts       = CONFIG.TILE_SIZE;
-    const [sx, sy] = camera.worldToScreen(queen.x * ts, queen.y * ts);
-    const health   = queen.health / 100;
+  // What the rooms hold: the food piled in the stores, the gardens' mushrooms
+  _drawRooms(ctx, camera, world) {
+    const u = TS * camera.zoom, W = world.width;
+    const [ox, oy] = camera.worldToScreen(0, 0);
+    const cw = camera.cw, ch = camera.ch;
 
-    // Slow heartbeat pulse — period ≈ 3 seconds
-    const pulse  = 0.5 + 0.5 * Math.sin(Date.now() * 0.0021);
-    const r0     = Math.max(22, (38 + pulse * 10) * camera.zoom);
-    const r1     = Math.max(40, (65 + pulse * 18) * camera.zoom);
-    const r2     = Math.max(65, (110 + pulse * 22) * camera.zoom);
-
-    // Inner hot core — amber-white
-    const g0 = ctx.createRadialGradient(sx, sy, 0, sx, sy, r0);
-    g0.addColorStop(0,   `rgba(255,210,100,${(0.30 * health).toFixed(2)})`);
-    g0.addColorStop(0.6, `rgba(255,160,40,${(0.18 * health).toFixed(2)})`);
-    g0.addColorStop(1,   'rgba(255,120,20,0)');
-    ctx.fillStyle = g0;
-    ctx.fillRect(sx - r0, sy - r0, r0 * 2, r0 * 2);
-
-    // Mid ring — deep orange halo
-    const g1 = ctx.createRadialGradient(sx, sy, r0 * 0.5, sx, sy, r1);
-    g1.addColorStop(0,   `rgba(255,100,10,${(0.12 * health).toFixed(2)})`);
-    g1.addColorStop(0.5, `rgba(220,60,10,${(0.07 * health).toFixed(2)})`);
-    g1.addColorStop(1,   'rgba(200,40,0,0)');
-    ctx.fillStyle = g1;
-    ctx.fillRect(sx - r1, sy - r1, r1 * 2, r1 * 2);
-
-    // Outer atmospheric blush
-    const g2 = ctx.createRadialGradient(sx, sy, r1 * 0.4, sx, sy, r2);
-    g2.addColorStop(0,   `rgba(180,40,0,${(0.05 * health).toFixed(2)})`);
-    g2.addColorStop(1,   'rgba(140,20,0,0)');
-    ctx.fillStyle = g2;
-    ctx.fillRect(sx - r2, sy - r2, r2 * 2, r2 * 2);
-  }
-
-  _drawCreatures(ctx, camera, creatures) {
-    const ts   = CONFIG.TILE_SIZE;
-    const zoom = camera.zoom;
-    const u    = ts * zoom; // 1 tile in screen pixels
-
-    for (const c of creatures) {
-      const [sx, sy] = camera.worldToScreen(c.x * ts, c.y * ts);
-      if (sx < -u * 4 || sx > camera.cw + u * 4) continue;
-
-      ctx.save();
-      ctx.translate(Math.round(sx), Math.round(sy));
-
-      if (c.dead) {
-        // Flat corpse — darkened outline
-        ctx.globalAlpha = Math.max(0, 1 - c.corpseTimer / 300);
-        ctx.fillStyle = '#1a1008';
-        ctx.fillRect(-u * 1.5, -u * 0.4, u * 3, u * 0.8);
-        // Food chunk dots remaining on corpse
-        for (let f = 0; f < c.foodChunks; f++) {
-          ctx.fillStyle = '#e8b820';
-          ctx.fillRect((-1 + f * 0.6) * u, -u * 0.3, u * 0.4, u * 0.4);
+    for (const c of world.chambers) {
+      if (!c.built || c.type !== ROOM.FOOD || c.held <= 0) continue;
+      const sx = ox + c.cx * u, sy = oy + c.cy * u, r = (c.rx + c.ry + 3) * u;
+      if (sx + r < 0 || sx - r > cw || sy + r < 0 || sy - r > ch) continue;
+      const n = Math.min(c.floor.length, Math.ceil(c.held / CONFIG.STORE_PER_TILE));
+      if (u < 2.4) {
+        // far off, the pile is just a band of gold on the floor
+        ctx.fillStyle = '#d8a02c';
+        for (let k = 0; k < n; k++) {
+          const i = c.floor[k];
+          ctx.fillRect(ox + (i % W) * u, oy + (((i / W) | 0) + 0.25) * u, u + 0.5, u * 0.75 + 0.5);
         }
-        ctx.globalAlpha = 1;
-        ctx.restore();
         continue;
       }
-
-      // Damage flash
-      if (c.hitFlash > 0) {
-        ctx.globalAlpha = 0.65 + Math.sin(c.hitFlash * 0.9) * 0.35;
+      const s = u * 0.44;
+      for (let k = 0; k < n; k++) {
+        const i = c.floor[k], x = i % W, y = (i / W) | 0;
+        for (let j = 0; j < 3; j++) {
+          const a = hash(i * 5 + j), b = hash(i * 5 + j + 3);
+          ctx.fillStyle = SEEDS[(a * 23 | 0) % SEEDS.length];
+          ctx.fillRect(ox + (x + 0.08 + a * 0.84) * u - s / 2, oy + (y + 0.22 + b * 0.62) * u - s / 2, s, s * 0.8);
+        }
       }
+    }
 
-      // Walking leg offset for animation
-      const leg = (c.animFrame & 1) ? u * 0.18 : -u * 0.18;
-      const dir = c.vx >= 0 ? 1 : -1;
-      ctx.scale(dir, 1); // flip to face direction of travel
-
-      if (c.type === 'beetle') {
-        // Shell (elytra) — dark iridescent oval
-        ctx.fillStyle = c.hitFlash > 0 ? '#8a4020' : '#2a1e0c';
-        ctx.fillRect(-u * 1.5, -u * 0.7, u * 3, u * 1.4);
-        // Shell highlight seam
-        ctx.fillStyle = '#3a2c18';
-        ctx.fillRect(-u * 0.08, -u * 0.65, u * 0.16, u * 1.3);
-        // Head
-        ctx.fillStyle = '#1e1408';
-        ctx.fillRect(u * 1.4, -u * 0.45, u * 0.8, u * 0.9);
-        // Antennae
-        ctx.fillStyle = '#3a2818';
-        ctx.fillRect(u * 2.1, -u * 0.9, u * 0.12, u * 0.6);
-        ctx.fillRect(u * 2.0, -u * 0.4, u * 0.9, u * 0.12);
-        // 6 legs
-        ctx.fillStyle = '#120e06';
-        for (let i = -1; i <= 1; i++) {
-          const lx = i * u * 0.8, lo = i === 0 ? 0 : leg;
-          ctx.fillRect(lx - u * 0.08, u * 0.7 + lo, u * 0.16, u * 0.55);
-          ctx.fillRect(lx - u * 0.08, -u * 0.7 - lo, u * 0.16, u * 0.55);
-        }
-        // HP bar
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.5, -u * 1.2, u * 3, u * 0.22);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.5, -u * 1.2, u * 3 * hpPct, u * 0.22);
-
-      } else if (c.type === 'spider') {
-        // Abdomen (rear, larger)
-        ctx.fillStyle = c.hitFlash > 0 ? '#6a2818' : '#1a1220';
-        ctx.fillRect(-u * 1.1, -u * 0.7, u * 1.8, u * 1.4);
-        // Cephalothorax (front, smaller)
-        ctx.fillStyle = '#221828';
-        ctx.fillRect(u * 0.7, -u * 0.5, u * 1.0, u * 1.0);
-        // 8 eyes
-        ctx.fillStyle = '#e87820';
-        for (let i = 0; i < 4; i++) {
-          ctx.fillRect(u * (0.82 + (i & 1) * 0.22), u * (-0.3 + Math.floor(i / 2) * 0.22), u * 0.14, u * 0.14);
-        }
-        // 8 legs (4 each side)
-        ctx.fillStyle = '#100c14';
-        for (let i = 0; i < 4; i++) {
-          const lx = (-0.6 + i * 0.45) * u;
-          const lo = (i & 1) ? leg : -leg;
-          ctx.fillRect(lx, u * 0.7 + lo, u * 0.12, u * 0.8);
-          ctx.fillRect(lx, -u * 0.7 - lo, u * 0.12, u * 0.8);
-        }
-        // HP bar
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.1, -u * 1.2, u * 2.2, u * 0.22);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.1, -u * 1.2, u * 2.2 * hpPct, u * 0.22);
-
-      } else if (c.type === 'earwig') {
-        // Elongated body segments
-        ctx.fillStyle = c.hitFlash > 0 ? '#7a3818' : '#2c1e10';
-        ctx.fillRect(-u * 1.6, -u * 0.45, u * 3.2, u * 0.9);
-        ctx.fillStyle = '#1e140a';
-        for (let i = -1; i <= 1; i++) ctx.fillRect(i * u * 0.8, -u * 0.4, u * 0.1, u * 0.8);
-        // Pincers at rear
-        ctx.fillStyle = '#3a2818';
-        ctx.fillRect(-u * 2.4, -u * 0.5, u * 0.8, u * 0.22);
-        ctx.fillRect(-u * 2.4,  u * 0.28, u * 0.8, u * 0.22);
-        // Head + antennae
-        ctx.fillStyle = '#241808';
-        ctx.fillRect(u * 1.6, -u * 0.35, u * 0.7, u * 0.7);
-        ctx.fillStyle = '#3a2810';
-        ctx.fillRect(u * 2.2, -u * 0.6, u * 0.55, u * 0.1);
-        ctx.fillRect(u * 2.2,  u * 0.5, u * 0.55, u * 0.1);
-        // 6 legs
-        ctx.fillStyle = '#18100a';
-        for (let i = -1; i <= 1; i++) {
-          const lx = i * u * 0.7, lo = i === 0 ? 0 : leg;
-          ctx.fillRect(lx, u * 0.45 + lo, u * 0.12, u * 0.55);
-          ctx.fillRect(lx, -u * 0.45 - lo, u * 0.12, u * 0.55);
-        }
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.6, -u * 1.1, u * 3.2, u * 0.22);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.6, -u * 1.1, u * 3.2 * hpPct, u * 0.22);
-
-      } else if (c.type === 'centipede') {
-        // Long segmented body with many legs — drawn as 6 connected ovals
-        const segs = 6, sw2 = u * 0.55;
-        ctx.fillStyle = c.hitFlash > 0 ? '#8a2810' : '#1a1c0c';
-        for (let s = 0; s < segs; s++) {
-          const sx = (s - segs * 0.5 + 0.5) * sw2;
-          const sy2 = (s % 2 === 0 ? 1 : -1) * u * 0.08; // slight undulation
-          ctx.fillRect(sx - sw2 * 0.45, sy2 - u * 0.35, sw2 * 0.9, u * 0.7);
-          // Pair of legs per segment
-          ctx.fillStyle = '#0e1008';
-          ctx.fillRect(sx - u * 0.08, u * 0.35 + sy2 + leg * 0.3, u * 0.12, u * 0.55);
-          ctx.fillRect(sx - u * 0.08, -u * 0.35 + sy2 - leg * 0.3, u * 0.12, u * 0.55);
-          ctx.fillStyle = c.hitFlash > 0 ? '#8a2810' : '#1a1c0c';
-        }
-        // Head with antennae
-        const hx = segs * sw2 * 0.5;
-        ctx.fillStyle = '#2a2810';
-        ctx.fillRect(hx - u * 0.4, -u * 0.4, u * 0.7, u * 0.8);
-        ctx.fillStyle = '#0e1008';
-        ctx.fillRect(hx + u * 0.3, -u * 0.8, u * 0.1, u * 0.5);
-        ctx.fillRect(hx + u * 0.3, u * 0.3, u * 0.1, u * 0.5);
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.8, -u * 1.1, u * 3.6, u * 0.22);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.8, -u * 1.1, u * 3.6 * hpPct, u * 0.22);
-
-      } else if (c.type === 'pillbug') {
-        // Round armoured oval — curls up when badly hurt
-        const curled = c.hp < c.maxHp * 0.35;
-        const bodyW = curled ? u * 1.4 : u * 2.2;
-        const bodyH = curled ? u * 1.4 : u * 0.9;
-        ctx.fillStyle = c.hitFlash > 0 ? '#607820' : '#3a4818';
-        ctx.fillRect(-bodyW * 0.5, -bodyH * 0.5, bodyW, bodyH);
-        // Armour segments
-        ctx.fillStyle = '#2a3410';
-        for (let i = -1; i <= 1; i++)
-          ctx.fillRect(i * bodyW * 0.28 - u * 0.05, -bodyH * 0.5, u * 0.1, bodyH);
-        // Highlight top
-        ctx.fillStyle = 'rgba(120,160,60,0.35)';
-        ctx.fillRect(-bodyW * 0.5, -bodyH * 0.5, bodyW, bodyH * 0.3);
-        // Tiny head
-        if (!curled) {
-          ctx.fillStyle = '#2a3010';
-          ctx.fillRect(bodyW * 0.5 - u * 0.1, -u * 0.25, u * 0.4, u * 0.5);
-          // Antennae
-          ctx.fillStyle = '#1a2008';
-          ctx.fillRect(bodyW * 0.5 + u * 0.2, -u * 0.4, u * 0.5, u * 0.1);
-          ctx.fillRect(bodyW * 0.5 + u * 0.2,  u * 0.3, u * 0.5, u * 0.1);
-          // Legs (tiny)
-          ctx.fillStyle = '#1e2610';
-          for (let i = -1; i <= 1; i++) {
-            ctx.fillRect(i * u * 0.55, bodyH * 0.5, u * 0.1, u * 0.45);
-            ctx.fillRect(i * u * 0.55, -bodyH * 0.5 - u * 0.45, u * 0.1, u * 0.45);
-          }
-        }
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.2, -u * 1.2, u * 2.4, u * 0.22);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.2, -u * 1.2, u * 2.4 * hpPct, u * 0.22);
-
-      } else if (c.type === 'cricket') {
-        // Elongated body, large jumping rear legs
-        ctx.fillStyle = c.hitFlash > 0 ? '#7a5820' : '#2e2810';
-        ctx.fillRect(-u * 1.4, -u * 0.4, u * 2.2, u * 0.8); // body
-        // Wing cover (slightly raised)
-        ctx.fillStyle = '#3a3218';
-        ctx.fillRect(-u * 0.6, -u * 0.5, u * 1.2, u * 0.18);
-        // Head
-        ctx.fillStyle = '#241e0c';
-        ctx.fillRect(u * 0.8, -u * 0.38, u * 0.6, u * 0.75);
-        // Long antennae
-        ctx.fillStyle = '#1a1408';
-        ctx.fillRect(u * 1.2, -u * 0.5, u * 0.12, u * 1.0);
-        ctx.fillRect(u * 1.3, -u * 0.5, u * 0.8, u * 0.1);
-        ctx.fillRect(u * 1.3,  u * 0.4, u * 0.8, u * 0.1);
-        // Large rear jumping legs (L-shaped)
-        ctx.fillStyle = '#1e1808';
-        ctx.fillRect(-u * 1.4, -u * 0.35, u * 0.12, u * 0.7 + leg * 0.4);  // femur
-        ctx.fillRect(-u * 1.4, u * 0.35 + leg * 0.4, u * 0.6, u * 0.12);    // tibia
-        ctx.fillRect(-u * 1.4, -u * 0.35 - leg * 0.4, u * 0.6, u * 0.12);   // upper
-        // Small front legs
-        ctx.fillRect(u * 0.1, u * 0.4, u * 0.1, u * 0.45);
-        ctx.fillRect(u * 0.5, u * 0.4, u * 0.1, u * 0.45);
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.4, -u * 1.1, u * 2.8, u * 0.22);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.4, -u * 1.1, u * 2.8 * hpPct, u * 0.22);
-
-      } else { // worm
-        // Simple pink-brown segmented worm wriggling along
-        const wave = Math.sin(c.animFrame * 1.2) * u * 0.15;
-        ctx.fillStyle = c.hitFlash > 0 ? '#c07060' : '#8a5040';
-        for (let s = 0; s < 5; s++) {
-          const sx = (s - 2.5) * u * 0.45;
-          const sy2 = (s % 2 === 0 ? wave : -wave);
-          ctx.fillRect(sx - u * 0.2, sy2 - u * 0.22, u * 0.42, u * 0.44);
-        }
-        // Tip / head
-        ctx.fillStyle = '#a06050';
-        ctx.fillRect(u * 0.8, -u * 0.18, u * 0.3, u * 0.36);
-        const hpPct = c.hp / c.maxHp;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(-u * 1.1, -u * 0.9, u * 2.2, u * 0.2);
-        ctx.fillStyle = hpPct > 0.5 ? '#40c840' : hpPct > 0.25 ? '#c8a020' : '#c82020';
-        ctx.fillRect(-u * 1.1, -u * 0.9, u * 2.2 * hpPct, u * 0.2);
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.restore();
+    if (u < 2) return;
+    const sw = Math.max(1, u * 0.14);
+    for (const m of this._mushrooms(world)) {
+      const sx = ox + m.x * u, sy = oy + m.y * u;
+      if (sx < -u * 2 || sx > cw + u * 2 || sy < -u * 2 || sy > ch + u * 2) continue;
+      const mh = m.h * u;
+      ctx.fillStyle = '#b4d8cc';
+      ctx.fillRect(sx - sw / 2, sy - mh, sw, mh);
+      ctx.fillStyle = '#4ed8b8';
+      ctx.fillRect(sx - u * 0.3, sy - mh - u * 0.14, u * 0.6, Math.max(1, u * 0.24));
+      ctx.fillStyle = '#b8fff0';
+      ctx.fillRect(sx - u * 0.16, sy - mh - u * 0.14, u * 0.2, Math.max(1, u * 0.1));
     }
   }
 
   _drawFrame(camera, world) {
     const ctx = this.ctx;
-    const ts = CONFIG.TILE_SIZE;
     const W = world.width, H = world.height;
-    const GT = CONFIG.GLASS_THICKNESS;
 
     const [x0, y0] = camera.worldToScreen(0, 0);
-    const [x1, y1] = camera.worldToScreen(W * ts, H * ts);
-    const bw = GT * ts * camera.zoom;
+    const [x1, y1] = camera.worldToScreen(W * TS, H * TS);
+    const bw = GT * TS * camera.zoom;
 
-    ctx.strokeStyle = 'rgba(100,200,240,0.4)';
+    // Light catching the glass
+    const g = ctx.createLinearGradient(x0, y0, x0 + (y1 - y0) * 0.9, y1);
+    g.addColorStop(0.00, 'rgba(255,255,255,0)');
+    g.addColorStop(0.16, 'rgba(255,255,255,0.045)');
+    g.addColorStop(0.24, 'rgba(255,255,255,0)');
+    g.addColorStop(0.31, 'rgba(255,255,255,0.03)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0)');
+    g.addColorStop(1.00, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x0 + bw, y0 + bw, (x1 - x0) - bw * 2, (y1 - y0) - bw * 2);
+
+    ctx.strokeStyle = 'rgba(120,190,230,0.3)';
     ctx.lineWidth = 2;
     ctx.strokeRect(x0 + bw * 0.5, y0 + bw * 0.5, (x1 - x0) - bw, (y1 - y0) - bw);
-
-    ctx.fillStyle = 'rgba(150,220,255,0.6)';
-    const cs = 5;
-    ctx.fillRect(x0, y0, cs, cs);
-    ctx.fillRect(x1 - cs, y0, cs, cs);
-    ctx.fillRect(x0, y1 - cs, cs, cs);
-    ctx.fillRect(x1 - cs, y1 - cs, cs, cs);
   }
 
-  _drawZoomHint(ctx, camera, w, h) {
-    const pct = Math.round(camera.zoom * 100);
-    const lod = camera.lodLevel;
-    const lodColors = { far: '#6688aa', tiny: '#aabb88', mid: '#88aa66', close: '#aa8866' };
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(8, h - 38, 78, 32);
-    ctx.font = '10px monospace';
+  // Darkened corners draw the eye to the middle of the farm
+  _drawVignette(ctx, w, h) {
+    if (!this._vignette) {
+      const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.42, w / 2, h / 2, Math.hypot(w, h) * 0.58);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.42)');
+      this._vignette = g;
+    }
+    ctx.fillStyle = this._vignette;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // The zoom, shown for a moment whenever it changes
+  _drawZoom(ctx, camera) {
+    if (this._zoom !== camera.zoom) {
+      if (this._zoom !== null && this.hud) this._zoomT = this.t;
+      this._zoom = camera.zoom;
+    }
+    const a = Math.min(1, (this._zoomT + 1.6 - this.t) / 0.5);
+    if (a <= 0 || !this.hud) return;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(14,10,6,0.72)';
+    ctx.fillRect(12, 12, 82, 22);
+    ctx.font = "11px 'Courier New', monospace";
     ctx.textAlign = 'left';
-    ctx.fillStyle = lodColors[lod];
-    ctx.fillText(`[${lod}]`, 12, h - 24);
-    ctx.fillStyle = '#8acce8';
-    ctx.fillText(`zoom ${pct}%`, 12, h - 12);
+    ctx.fillStyle = '#c8a870';
+    ctx.fillText(`zoom ${Math.round(camera.zoom * 100)}%`, 20, 27);
+    ctx.globalAlpha = 1;
   }
 
   resize(w, h) {
     this.canvas.width = w;
     this.canvas.height = h;
     this._firstFrame = true;
+    this._vignette = null;
   }
 }

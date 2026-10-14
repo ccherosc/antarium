@@ -1,5 +1,5 @@
-import { CONFIG } from '../config.js';
 import { logEvent } from '../events.js';
+import { colonyTarget } from './queen.js';
 
 export class ColonyStats {
   constructor() {
@@ -14,6 +14,7 @@ export class ColonyStats {
     this.tunnelLength = 0;
     this.chamberCount = 0;
     this.day = 1;
+    this.capacity = 0;
     this.peakPopulation = 0;
     this._simTick = 0;
     this._queenWarnedLow = false;
@@ -23,7 +24,8 @@ export class ColonyStats {
 
   update(world, antSystem, queen) {
     this._simTick++;
-    this.day = Math.floor(this._simTick / CONFIG.TICKS_PER_DAY) + 1;
+    this.day = world.sky ? world.sky.day : 1;
+    this.capacity = Math.round(colonyTarget(world));   // ants the nest has room for
 
     this.population = antSystem.population;
     if (this.population > this.peakPopulation) this.peakPopulation = this.population;
@@ -49,7 +51,8 @@ export class ColonyStats {
 
     const foodFactor = Math.min(1, world.foodStore / 300);
     const waterFactor = Math.min(1, world.waterStore / 200);
-    const crowding = Math.max(0, 1 - antSystem.population / 150);
+    // elbow room: full marks until the colony outgrows the nest it has dug
+    const crowding = Math.min(1, this.capacity / Math.max(1, antSystem.population));
 
     this.happiness = Math.round(
       (foodFactor * 0.35 + waterFactor * 0.25 + (queen.health / 100) * 0.25 + crowding * 0.15) * 100

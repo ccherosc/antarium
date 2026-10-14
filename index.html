@@ -36,10 +36,12 @@
       <div class="dash-title">PIXEL ANTS</div>
       <div class="dash-mode" id="stat-mode">SCREENSAVER</div>
       <div class="dash-day" id="stat-day">DAY 1</div>
+      <div class="dash-sky" id="stat-sky">MORNING · CLEAR</div>
 
       <div class="dash-section">
         <div class="dash-label">COLONY STATUS</div>
         <div class="dash-row"><span>Population</span><span id="stat-population">0</span></div>
+        <div class="dash-row"><span>Nest Capacity</span><span id="stat-capacity">0</span></div>
         <div class="dash-row"><span>Eggs</span><span id="stat-eggs">0</span></div>
         <div class="dash-row"><span>Queen Health</span><span id="stat-queen-health">100%</span></div>
         <div class="stat-bar-wrap"><div class="stat-bar" id="bar-queen-health" style="width:100%"></div></div>
@@ -132,7 +134,12 @@
         </div>
         <div class="slider-row">
           <label>Sim Speed</label>
-          <input type="range" id="ctrl-speed" min="0" max="5" step="0.5" value="1">
+          <input type="range" id="ctrl-speed" min="0" max="8" step="0.5" value="1">
+        </div>
+        <div class="slider-row" title="Left alone for 20 seconds, the camera tours the nest by itself">
+          <label for="ctrl-auto-camera">Auto Tour</label>
+          <input type="checkbox" id="ctrl-auto-camera" checked>
+          <span class="slider-note">when idle</span>
         </div>
       </div>
 
@@ -148,21 +155,42 @@
 
       <div class="sim-tick-row">tick: <span id="sim-tick">0</span></div>
 
-      <div class="dash-section" style="font-size:9px; color:var(--text2); line-height:1.7; opacity:0.7;">
-        <div>🖱 Scroll: zoom in/out</div>
-        <div>🖱 Drag: pan camera</div>
-        <div>📱 Pinch: mobile zoom</div>
-        <div>Click canvas: use tool</div>
+      <div class="dash-section dash-help">
+        <div><b>Scroll</b> or <b>pinch</b> zoom · <b>Drag</b> pan</div>
+        <div><b>Click</b> the farm to use a tool</div>
+        <div><b>Space</b> pause · <b>[ ]</b> speed</div>
+        <div><b>C</b> camera tour · <b>F</b> full screen</div>
+        <div><b>H</b> hide panel · <b>0</b> whole farm</div>
+        <div><b>Arrows</b> pan · <b>+ −</b> zoom</div>
       </div>
     </div>
 
     <div id="toolbar">
       <button class="zoom-btn" id="btn-zoom-in" title="Zoom in">+</button>
       <button class="zoom-btn" id="btn-zoom-out" title="Zoom out">−</button>
-      <button class="zoom-btn" id="btn-zoom-reset" title="Fit world">⌂</button>
+      <button class="zoom-btn" id="btn-zoom-reset" title="Show the whole farm (0)">⌂</button>
+      <div class="toolbar-gap"></div>
+      <button class="zoom-btn" id="btn-tour" title="Camera tour (C)">
+        <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M4 2.5v9l8-4.5z" fill="currentColor"/></svg>
+      </button>
+      <button class="zoom-btn" id="btn-fullscreen" title="Full screen (F)">
+        <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 5V2h3M9 2h3v3M12 9v3H9M5 12H2V9" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+      <button class="zoom-btn" id="btn-panel" title="Hide or show the panel (H)">
+        <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 2.5h11v9h-11zM9 2.5v9" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+      </button>
     </div>
 
-    <div id="hint">Scroll to zoom · Drag to pan · Click to feed</div>
+    <div id="hint">Scroll to zoom · Drag to pan · Click to feed · C for the camera tour</div>
+
+    <!-- Under the picture while the camera tours by itself -->
+    <div id="caption">
+      <div id="cap-event"></div>
+      <div id="cap-title"></div>
+      <div id="cap-status"></div>
+    </div>
+
+    <div id="toast"></div>
 
     <!-- Mode selector — shown before game starts -->
     <div id="mode-select">
@@ -228,10 +256,5 @@
   </div>
 
   <script type="module" src="src/main.js"></script>
-  <script>
-    // Fade hint after 5 seconds
-    setTimeout(() => document.getElementById('hint')?.classList.add('fade'), 5000);
-    setTimeout(() => document.getElementById('hint')?.remove(), 7500);
-  </script>
 </body>
 </html>

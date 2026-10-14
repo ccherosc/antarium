@@ -1,9 +1,18 @@
 import { ROLE, STATE, CONFIG } from '../config.js';
+import { hash } from './renderSky.js';
 
 const C = CONFIG;
+const TS = C.TILE_SIZE, SR = C.SURFACE_ROW, GT = C.GLASS_THICKNESS;
+
+// What an ant holds, by CARRY id: nothing, food, water, dirt, brood
+const LOAD = [null, '#f8d040', '#58a8f0', '#8a6a44', '#f6f0dc'];
+const LANE = 0.22;   // tiles each ant keeps to the right of the middle of a tunnel
+
+// Ants are drawn about two tiles long at every zoom, so they always fit their tunnels.
+// Each sprite below is laid out in its own pixels and scaled to that length.
 
 // ── Far zoom: single-pixel dots ──────────────────────────────────────────────
-function drawAntFar(ctx, sx, sy, isQueen) {
+function drawAntFar(ctx, sx, sy, isQueen, load) {
   const x = Math.round(sx), y = Math.round(sy);
   if (isQueen) {
     ctx.fillStyle = '#c03010';
@@ -12,18 +21,16 @@ function drawAntFar(ctx, sx, sy, isQueen) {
     ctx.fillRect(x, y - 3, 1, 1);
   } else {
     ctx.fillStyle = '#1a1008';
-    ctx.fillRect(x, y, 2, 1);
+    ctx.fillRect(x - 1, y, 2, 1);
+    if (load) { ctx.fillStyle = load; ctx.fillRect(x, y - 1, 1, 1); }
   }
 }
 
 // ── Tiny zoom: proportional 3-part silhouette ────────────────────────────────
-// Sprite designed at native zoom=LOD_TINY (0.75); scaled proportionally below that.
-// This fills the gap between dots and the full mid-zoom sprite.
-function drawAntTiny(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
-  // Scale so ant is always ~1.5 tiles long regardless of zoom
-  const s = Math.max(0.15, zoom / C.LOD_TINY); // 1.0 at LOD_TINY, shrinks below
+function drawAntTiny(ctx, sx, sy, angle, zoom, isQueen, load) {
+  const s = Math.max(0.45, zoom * 0.8) * (isQueen ? 1.6 : 1);
   ctx.save();
-  ctx.translate(Math.round(sx), Math.round(sy));
+  ctx.translate(sx, sy);
   ctx.rotate(angle);
   ctx.scale(s, s);
 
@@ -37,25 +44,22 @@ function drawAntTiny(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
     ctx.fillStyle = '#d84028';
     ctx.fillRect( 1, -2, 3, 3);  // head
   } else {
-    const bc = '#1e1008';
-    ctx.fillStyle = bc;
-    ctx.fillRect(-6, -1, 4, 3);  // gaster
-    ctx.fillRect(-2, -1, 3, 2);  // thorax
+    ctx.fillStyle = '#1e1008';
+    ctx.fillRect(-6, -1.5, 4, 3);  // gaster
+    ctx.fillRect(-2, -1, 3, 2);    // thorax
     ctx.fillStyle = '#2a1c0c';
-    ctx.fillRect( 1, -1, 3, 2);  // head
-    if (carryFood) {
-      ctx.fillStyle = '#f8d040';
-      ctx.fillRect(4, -1, 2, 2);
+    ctx.fillRect( 1, -1, 3, 2);    // head
+    if (load) {
+      ctx.fillStyle = load;
+      ctx.fillRect(4, -1.5, 3, 3);
     }
   }
   ctx.restore();
 }
 
-// ── Mid zoom: pixel ant, proportionally scaled ───────────────────────────────
-// Sprite designed at LOD_MID (zoom 1.8); ctx.scale keeps it world-proportional
-// at any zoom in the tiny→mid range so ants never look oversized.
-function drawAntMid(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
-  const s = zoom / C.LOD_MID; // 1.0 at LOD_MID boundary, shrinks with zoom
+// ── Mid zoom: pixel ant ──────────────────────────────────────────────────────
+function drawAntMid(ctx, sx, sy, angle, zoom, isQueen, load, frame) {
+  const s = zoom / (isQueen ? 1.25 : 1.5);
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(angle);
@@ -104,20 +108,23 @@ function drawAntMid(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
   } else {
     // Worker mid-zoom
     const bc = '#1e1008', hc = '#2a1c0c', lc = '#0e0804';
+    const lo = frame === 1 ? 0.6 : frame === 2 ? -0.6 : 0;
+    ctx.fillStyle = lc;
+    ctx.fillRect(-4, -3.5 - lo, 1, 3);
+    ctx.fillRect(-2, -3.5,      1, 3);
+    ctx.fillRect( 0, -3.5 + lo, 1, 3);
+    ctx.fillRect(-4,  0.5 + lo, 1, 3);
+    ctx.fillRect(-2,  0.5,      1, 3);
+    ctx.fillRect( 0,  0.5 - lo, 1, 3);
     ctx.fillStyle = bc;
     ctx.fillRect(-5, -2, 4, 4); // abdomen
     ctx.fillRect(-1, -1, 2, 2); // petiole
     ctx.fillRect( 1, -2, 3, 4); // thorax
     ctx.fillStyle = hc;
-    ctx.fillRect( 4, -2, 3, 3); // head
-    ctx.fillStyle = lc;
-    for (let i = -2; i <= 0; i++) {
-      ctx.fillRect(i * 2, -3, 1, 3);
-      ctx.fillRect(i * 2,  2, 1, 3);
-    }
-    if (carryFood) {
-      ctx.fillStyle = '#f8d040';
-      ctx.fillRect(6, -2, 2, 2);
+    ctx.fillRect( 4, -1.5, 3, 3); // head
+    if (load) {
+      ctx.fillStyle = load;
+      ctx.fillRect(7, -1.5, 3, 3);
     }
   }
 
@@ -125,13 +132,14 @@ function drawAntMid(ctx, sx, sy, angle, zoom, isQueen, carryFood) {
 }
 
 // ── Close zoom: queen ────────────────────────────────────────────────────────
-// Drawn at scale 2.0 — all coordinates are in sprite-pixels (×2 on screen).
-// Anatomy: gaster(←) · petiole · thorax · head(→), ant faces right (+x).
-function drawQueenClose(ctx, sx, sy, angle, animFrame) {
+// All coordinates are in sprite-pixels. Anatomy: gaster(←) · petiole · thorax ·
+// head(→), ant faces right (+x).
+function drawQueenClose(ctx, sx, sy, angle, zoom, animFrame) {
+  const s = zoom / 1.45;
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(angle);
-  ctx.scale(2.0, 2.0);
+  ctx.scale(s, s);
 
   const lo = animFrame === 1 ? 1 : 0; // leg animation offset
 
@@ -148,7 +156,7 @@ function drawQueenClose(ctx, sx, sy, angle, animFrame) {
     [-12,  2, 10, '#8e1c0c'],  // lower shadow
     [-10,  3,  7, '#7a1408'],  // bottom cap shadow
   ];
-  for (const [x, y, w, c] of bands) { ctx.fillStyle = c; ctx.fillRect(x, y, w, 1); }
+  for (const [x, y, w, c] of bands) { ctx.fillStyle = c; ctx.fillRect(x, y, w, 1.05); }
 
   // Dorsal stripe — segmentation between gaster sections
   ctx.fillStyle = '#9a1e0e';
@@ -202,8 +210,7 @@ function drawQueenClose(ctx, sx, sy, angle, animFrame) {
   ctx.fillRect(5,  2, 5, 1);
 
   // Compound eyes — 2×2, two of them (upper and lower)
-  const eyes = [[-3, 2], [1, 2]]; // [dy, dx from head-right-corner]
-  for (const [ey, ex] of eyes) {
+  for (const ey of [-3, 1]) {
     ctx.fillStyle = '#ff9020';
     ctx.fillRect(7, ey, 2, 2);
     ctx.fillStyle = '#ffcc50'; // shine
@@ -256,14 +263,14 @@ function drawQueenClose(ctx, sx, sy, angle, animFrame) {
 }
 
 // ── Close zoom: worker/digger/etc ────────────────────────────────────────────
-function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame, carryDirt) {
-  const isQueen    = role === ROLE.QUEEN;
+function drawAntClose(ctx, sx, sy, angle, zoom, role, load, animFrame) {
   const isExplorer = role === ROLE.EXPLORER;
   const isRogue    = role === ROLE.ROGUE;
-  const scale   = isQueen ? 2.2 : isRogue ? 1.3 : 1.0;
-  const bc = isQueen ? '#b03010' : isRogue ? '#8a4e10' : isExplorer ? '#3a3028' : '#1e1008';
-  const hc = isQueen ? '#d04018' : isRogue ? '#c06820' : isExplorer ? '#4a4038' : '#2a1c0a';
-  const ac = isQueen ? '#e05020' : isRogue ? '#a05818' : isExplorer ? '#4e4840' : '#2e200c';
+  const isAlate    = role === ROLE.ALATE;
+  const scale = (zoom / 2.25) * (isRogue ? 1.3 : isAlate ? 1.15 : 1);
+  const bc = isRogue ? '#8a4e10' : isAlate ? '#3c1a0a' : isExplorer ? '#3a3028' : '#1e1008';
+  const hc = isRogue ? '#c06820' : isAlate ? '#54240e' : isExplorer ? '#4a4038' : '#2a1c0a';
+  const ac = isRogue ? '#a05818' : isAlate ? '#5a2a10' : isExplorer ? '#4e4840' : '#2e200c';
   const lc = '#100a04';
 
   ctx.save();
@@ -271,11 +278,23 @@ function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame, carryDirt)
   ctx.rotate(angle);
   ctx.scale(scale, scale);
 
+  // Legs — 3 pairs, stepping in turn
+  const lo = animFrame === 1 ? 1 : animFrame === 2 ? -1 : 0;
+  ctx.fillStyle = lc;
+  ctx.fillRect(-4 - lo, -5, 1, 4);
+  ctx.fillRect(-1 + lo, -5, 1, 4);
+  ctx.fillRect( 2 - lo, -5, 1, 4);
+  ctx.fillRect(-4 + lo,  1, 1, 4);
+  ctx.fillRect(-1 - lo,  1, 1, 4);
+  ctx.fillRect( 2 + lo,  1, 1, 4);
+
   // Abdomen (oval)
   ctx.fillStyle = ac;
-  ctx.fillRect(-9, -3, 6, 5);
+  ctx.fillRect(-9, -3, 6, 6);
   ctx.fillStyle = bc;
   ctx.fillRect(-8, -2, 5, 4);
+  ctx.fillStyle = 'rgba(255,220,170,0.16)';   // sheen
+  ctx.fillRect(-8, -3, 4, 1);
 
   // Petiole
   ctx.fillStyle = lc;
@@ -287,120 +306,175 @@ function drawAntClose(ctx, sx, sy, angle, role, carryFood, animFrame, carryDirt)
 
   // Head
   ctx.fillStyle = hc;
-  ctx.fillRect(3, -2, 4, 3);
+  ctx.fillRect(3, -2, 4, 4);
 
-  // Eye
+  // Eyes
   ctx.fillStyle = '#ff8800';
   ctx.fillRect(6, -2, 1, 1);
+  ctx.fillRect(6,  1, 1, 1);
 
   // Antennae
   ctx.fillStyle = lc;
-  ctx.fillRect(4, -3, 1, 2);
-  ctx.fillRect(5, -4, 3, 1);
-  ctx.fillRect(6, -3, 1, 1);
+  ctx.fillRect(6, -4, 1, 2);
+  ctx.fillRect(7, -5, 3, 1);
+  ctx.fillRect(6,  2, 1, 2);
+  ctx.fillRect(7,  4, 3, 1);
 
   // Mandibles
   ctx.fillStyle = hc;
-  ctx.fillRect(7, -1, 2, 1);
-  ctx.fillRect(7,  1, 2, 1);
+  ctx.fillRect(7, -1.5, 2, 1);
+  ctx.fillRect(7,  0.5, 2, 1);
 
-  // Legs — 3 pairs, animated by frame
-  const lo = animFrame === 1 ? 1 : 0;
-  ctx.fillStyle = lc;
-  ctx.fillRect(-6, -3 - lo, 1, 3);
-  ctx.fillRect(-3, -3,      1, 3);
-  ctx.fillRect( 0, -3 + lo, 1, 3);
-  ctx.fillRect(-6,  1 + lo, 1, 3);
-  ctx.fillRect(-3,  1,      1, 3);
-  ctx.fillRect( 0,  1 - lo, 1, 3);
-
-  // Carrying food
-  if (carryFood) {
-    ctx.fillStyle = '#f8d040';
-    ctx.fillRect(7, -3, 3, 3);
-    ctx.fillStyle = 'rgba(255,255,180,0.6)';
-    ctx.fillRect(8, -3, 1, 1);
-  }
-
-  // Carrying dirt (heading to anthill)
-  if (carryDirt) {
-    ctx.fillStyle = '#7a6040';
-    ctx.fillRect(7, -3, 3, 3);
-    ctx.fillStyle = '#9a7850';
-    ctx.fillRect(8, -3, 1, 1);
-  }
-
-  // Queen crown markings
-  if (isQueen) {
-    ctx.fillStyle = '#ffd040';
-    ctx.fillRect(-7, -5, 2, 1);
-    ctx.fillRect(-3, -4, 2, 1);
-    ctx.fillRect( 1, -3, 2, 1);
+  // Whatever is held in the mandibles
+  if (load) {
+    ctx.fillStyle = load;
+    ctx.fillRect(8, -2, 4, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(9, -2, 2, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(8, 1, 4, 1);
   }
 
   // Rogue amber stripe — battle-scarred warrior marking
   if (isRogue) {
     ctx.fillStyle = '#f0a030';
-    ctx.fillRect(-7, -1, 14, 1); // amber racing stripe across the body
+    ctx.fillRect(-7, -0.5, 14, 1); // amber racing stripe across the body
     ctx.fillStyle = '#ff6020';
-    ctx.fillRect( 6, -2,  2, 1); // glowing eye
+    ctx.fillRect( 6, -2,  1, 1);   // glowing eyes
+    ctx.fillRect( 6,  1,  1, 1);
   }
 
   ctx.restore();
 }
 
-// ── Egg ──────────────────────────────────────────────────────────────────────
-function drawEgg(ctx, sx, sy, zoom, hatchProgress) {
-  const r = zoom < C.LOD_FAR ? 1.2 : zoom < C.LOD_TINY ? 1.8 : zoom < C.LOD_MID ? 2.5 : 5;
-  const alpha = 0.5 + hatchProgress * 0.5;
-  ctx.fillStyle = `rgba(240,232,192,${alpha})`;
-  ctx.beginPath();
-  ctx.ellipse(sx, sy, r * 0.65, r, 0, 0, Math.PI * 2);
-  ctx.fill();
-  if (hatchProgress > 0.55) {
-    ctx.fillStyle = `rgba(255,215,90,${alpha * 0.5})`;
+// ── Wings (alates) ───────────────────────────────────────────────────────────
+// s: screen pixels per close-sprite pixel; spread: how far each wing swings out
+function drawWings(ctx, sx, sy, angle, s, spread) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+  ctx.scale(s, s);
+  for (let side = -1; side <= 1; side += 2) {
+    ctx.save();
+    ctx.rotate(-side * spread);   // hinged at the thorax
+    ctx.fillStyle = 'rgba(226,238,255,0.5)';
     ctx.beginPath();
-    ctx.ellipse(sx, sy, r * 0.3, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.ellipse(-6.5, side * 1.2, 7, 2.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(-11, side * 1.2 - 0.3, 9, 0.6);   // vein
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ── Brood: egg → larva → pupa ────────────────────────────────────────────────
+// u: screen pixels per tile; prog: 0 just laid → 1 about to hatch
+function drawBrood(ctx, sx, sy, u, prog, seed, t) {
+  if (u < 1.8) {   // far away: a pale speck
+    ctx.fillStyle = prog < 0.7 ? '#f0e8c8' : '#d8b888';
+    ctx.fillRect(sx, sy, 1, 1);
+    return;
+  }
+  const rot = hash(seed | 0) * Math.PI;
+  ctx.beginPath();
+  if (prog < 0.3) {
+    ctx.fillStyle = '#f8f2e0';
+    ctx.ellipse(sx, sy, Math.max(0.9, u * 0.19), Math.max(1.2, u * 0.29), rot, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (prog < 0.7) {
+    // larvae fatten as they are fed, and squirm
+    const g = (prog - 0.3) / 0.4;
+    const rx = u * (0.24 + 0.1 * g), ry = u * (0.38 + 0.2 * g);
+    const a = rot + Math.sin(t * 2.2 + seed) * 0.3;
+    ctx.fillStyle = '#f2e2b6';
+    ctx.ellipse(sx, sy, rx, ry, a, 0, Math.PI * 2);
+    ctx.fill();
+    if (u >= 5) {
+      const hx = sx - Math.sin(a) * ry * 0.72, hy = sy + Math.cos(a) * ry * 0.72;
+      const hs = Math.max(1, u * 0.16);
+      ctx.fillStyle = '#c0884a';
+      ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+    }
+  } else {
+    // a cocoon, twitching as the ant inside gets ready to come out
+    const jx = prog > 0.93 ? Math.sin(t * 45 + seed) * u * 0.07 : 0;
+    ctx.fillStyle = '#b89060';
+    ctx.ellipse(sx + jx, sy, u * 0.36, u * 0.62, rot, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = '#e4c690';
+    ctx.ellipse(sx + jx - u * 0.05, sy - u * 0.06, u * 0.25, u * 0.48, rot, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
 // ── Main render ──────────────────────────────────────────────────────────────
-export function renderAnts(ctx, antSystem, queen, camera) {
+// alpha: how far this frame falls between two simulation ticks; t: seconds of real time
+export function renderAnts(ctx, antSystem, queen, camera, alpha = 1, t = 0) {
   const zoom = camera.zoom;
-  const ts   = C.TILE_SIZE;
   const lod  = camera.lodLevel;
+  const u    = TS * zoom;
+  const [ox, oy] = camera.worldToScreen(0, 0);
+  const cw = camera.cw, ch = camera.ch;
 
-  // Eggs (behind ants)
+  // Brood (behind the ants). An egg being carried is drawn as its carrier's load.
+  const pad = u + 4;
   for (const egg of antSystem.eggs) {
-    const [sx, sy] = camera.worldToScreen(egg.x * ts, egg.y * ts);
-    if (sx < -10 || sx > camera.cw + 10 || sy < -10 || sy > camera.ch + 10) continue;
-    const prog = Math.max(0, Math.min(1, 1 - egg.hatchTimer / C.EGG_HATCH_TICKS));
-    drawEgg(ctx, sx, sy, zoom, prog);
+    if (egg.carried) continue;
+    const sx = ox + egg.x * u, sy = oy + egg.y * u;
+    if (sx < -pad || sx > cw + pad || sy < -pad || sy > ch + pad) continue;
+    const prog = Math.max(0, Math.min(1, 1 - egg.hatchTimer / egg.total));
+    drawBrood(ctx, sx, sy, u, prog, egg.x * 7.31 + egg.y * 131.7, t);
   }
 
   // Worker ants
+  const m = u * 3 + 8;
   for (const ant of antSystem.ants) {
-    const [sx, sy] = camera.worldToScreen(ant.x * ts, ant.y * ts);
-    if (sx < -20 || sx > camera.cw + 20 || sy < -20 || sy > camera.ch + 20) continue;
+    let x = ant.px === undefined ? ant.x : ant.px + (ant.x - ant.px) * alpha;
+    let y = ant.py === undefined ? ant.y : ant.py + (ant.y - ant.py) * alpha;
+    const a = ant.angle;
+    const alate = ant.role === ROLE.ALATE;
+    const air = alate && ant.sub === 2;
 
-    if      (lod === 'far')   drawAntFar(ctx, sx, sy, false);
-    else if (lod === 'tiny')  drawAntTiny(ctx, sx, sy, ant.angle, zoom, false, ant.carryFood || ant.carryDirt);
-    else if (lod === 'mid')   drawAntMid(ctx, sx, sy, ant.angle, zoom, false, ant.carryFood || ant.carryDirt);
-    else                      drawAntClose(ctx, sx, sy, ant.angle, ant.role, ant.carryFood, ant.animFrame, ant.carryDirt);
+    if (!air) {
+      // keep right: two lanes of traffic in every tunnel
+      const lane = LANE * Math.max(0, Math.min(1, y - SR + 1));
+      if (lane > 0) { x -= Math.sin(a) * lane; y += Math.cos(a) * lane; }
+      if (ant.state === STATE.DIGGING) {   // worrying at the soil face
+        const j = 0.12 * Math.sin(t * 14 + ant.id);
+        x += Math.cos(a) * j;
+        y += Math.sin(a) * j;
+      }
+    }
+
+    const sx = ox + x * u, sy = oy + y * u;
+    if (sx < -m || sx > cw + m || sy < -m || sy > ch + m) continue;
+
+    const load = LOAD[ant.carry] || null;
+    // alates fade into the sky as they leave the farm
+    const fade = air ? Math.max(0, Math.min(1, (y - GT - 0.5) / 4)) : 1;
+    if (fade <= 0) continue;
+    if (fade < 1) ctx.globalAlpha = fade;
+
+    if      (lod === 'far')   drawAntFar(ctx, sx, sy, false, alate ? '#e8f0ff' : load);
+    else if (lod === 'tiny')  drawAntTiny(ctx, sx, sy, a, zoom, false, load);
+    else if (lod === 'mid')   drawAntMid(ctx, sx, sy, a, zoom, false, load, ant.animFrame);
+    else                      drawAntClose(ctx, sx, sy, a, zoom, ant.role, load, ant.animFrame);
+
+    if (alate && lod !== 'far') {
+      const spread = !air ? 0.14 : ant.pause > 0 ? 0.55 : 0.95 + 0.45 * Math.sin(t * 38 + ant.id);
+      drawWings(ctx, sx, sy, a, zoom / 2.25 * 1.15, spread);
+    }
+    if (fade < 1) ctx.globalAlpha = 1;
   }
 
   // Queen
-  const [qsx, qsy] = camera.worldToScreen(queen.x * ts, queen.y * ts);
-  if (qsx > -50 && qsx < camera.cw + 50 && qsy > -50 && qsy < camera.ch + 50) {
-    if      (lod === 'far')   drawAntFar(ctx, qsx, qsy, true);
-    else if (lod === 'tiny')  drawAntTiny(ctx, qsx, qsy, queen.angle, zoom, true, false);
-    else if (lod === 'mid')   drawAntMid(ctx, qsx, qsy, queen.angle, zoom, true, false);
-    else                      drawQueenClose(ctx, qsx, qsy, queen.angle, queen.animFrame);
-
-    if (lod === 'far') {
-      ctx.fillStyle = '#ffd040';
-      ctx.fillRect(Math.round(qsx), Math.round(qsy) - 5, 1, 1);
-    }
+  const qsx = ox + queen.x * u, qsy = oy + queen.y * u;
+  if (qsx > -80 - m && qsx < cw + 80 + m && qsy > -80 - m && qsy < ch + 80 + m) {
+    if      (lod === 'far')   drawAntFar(ctx, qsx, qsy, true, null);
+    else if (lod === 'tiny')  drawAntTiny(ctx, qsx, qsy, queen.angle, zoom, true, null);
+    else if (lod === 'mid')   drawAntMid(ctx, qsx, qsy, queen.angle, zoom, true, null, 0);
+    else                      drawQueenClose(ctx, qsx, qsy, queen.angle, zoom, queen.animFrame);
   }
 }

@@ -1,4 +1,4 @@
-import { CONFIG, STATE } from '../config.js';
+import { CONFIG, STATE, ROLE, CARRY } from '../config.js';
 import { logEvent } from '../events.js';
 
 // Surface creature species templates — speeds reduced for dramatic, slow encounters
@@ -30,7 +30,11 @@ export class CreatureSystem {
       const c = this.creatures[i];
       if (c.dead) {
         c.corpseTimer++;
-        if (c.foodChunks <= 0 && c.corpseTimer > 500) this.creatures.splice(i, 1);
+        // picked clean — or left so long that what remains has dried up
+        if ((c.foodChunks <= 0 && c.corpseTimer > 500) || c.corpseTimer > 2400) {
+          c.gone = true;
+          this.creatures.splice(i, 1);
+        }
         continue;
       }
       this._tick(c, world, antSystem);
@@ -41,6 +45,7 @@ export class CreatureSystem {
 
   _trySpawn(world) {
     if (this.creatures.filter(c => !c.dead).length >= 1) return; // one at a time — rare events
+    if (world.sky && world.sky.weather !== 'clear') return;      // nothing is out in the rain
     const r = Math.random();
     const type = r < 0.22 ? 'beetle'
                : r < 0.40 ? 'spider'
@@ -54,10 +59,11 @@ export class CreatureSystem {
     const fromLeft = Math.random() < 0.5;
     const initialVx = (fromLeft ? 1 : -1) * sp.speed;
 
+    const x = fromLeft ? GT - 2.5 : world.width - GT + 2.5;      // out of sight behind the frame
     this.creatures.push({
       type, sp,
-      x: fromLeft ? GT + 1.5 : world.width - GT - 2.5,
-      y: CONFIG.SURFACE_ROW - 0.5,
+      x,
+      y: world.groundY(x),
       vx: initialVx,
       initialVx,          // natural walking direction — used to resume crossing after chasing
       lifeTimer: 0,
@@ -68,7 +74,7 @@ export class CreatureSystem {
       hitFlash: 0, atkCd: 0,
       hopTimer: type === 'cricket' ? 60 + Math.floor(Math.random() * 80) : 0,
     });
-    logEvent(`A ${sp.label} is crossing the surface!`);
+    logEvent(`${/^[AEIOU]/.test(sp.label) ? 'An' : 'A'} ${sp.label} is crossing the surface!`);
   }
 
   _tick(c, world, antSystem) {
@@ -81,7 +87,7 @@ export class CreatureSystem {
     if (c.hitFlash > 0) c.hitFlash--;
     if (c.atkCd   > 0) c.atkCd--;
 
-    c.y = CONFIG.SURFACE_ROW - 0.5; // stay on surface
+    c.y += (world.groundY(c.x) - c.y) * 0.35; // stay on the ground, up and over the mound
 
     // Creature presence keeps colony on edge — alarm builds slowly, spikes on attack
     world.alarmLevel = Math.min(1, world.alarmLevel + 0.002);
@@ -108,6 +114,7 @@ export class CreatureSystem {
     const effectiveAggro = sp.aggro * (raging ? 1.8 : 1.0);
     let nearestAnt = null, nearestDist = effectiveAggro;
     for (const ant of antSystem.ants) {
+      if (ant.y >= CONFIG.SURFACE_ROW || ant.role === ROLE.ALATE) continue; // only those out in the open
       const d = Math.hypot(ant.x - c.x, ant.y - c.y);
       if (d < nearestDist) { nearestDist = d; nearestAnt = ant; }
     }
@@ -157,9 +164,14 @@ export class CreatureSystem {
       if (ant.state === STATE.DEFENDING) defenderCount++;
     }
 
+    // A big intruder draws a bigger mob, but the whole colony never empties out
+    const maxDefenders = Math.max(8, Math.min(26, 6 + threats[0].maxHp / 3));
+
     for (const ant of antSystem.ants) {
+      if (defenderCount >= maxDefenders) break;
       if (ant.state === STATE.DEFENDING || ant.state === STATE.FEASTING ||
-          ant.state === STATE.DUMPING_DIRT) continue;
+          ant.state === STATE.FLYING || ant.role === ROLE.ALATE ||
+          ant.carry !== CARRY.NONE) continue;
 
       // Surface ants always eligible; deep ants join once alarm is high enough
       const depthOk = ant.y <= SR + 8 || alarm > 0.40;
@@ -174,13 +186,20 @@ export class CreatureSystem {
         // High alarm extends detection range — word travels through the colony
         const range = alarm > 0.50 ? 80 : 16;
         if (d < range && Math.random() < baseChance * urgency) {
-          ant.state         = STATE.DEFENDING;
-          ant.defenseTarget = c;
+          antSystem.recruit(ant, c);
           defenderCount++;
           break;
         }
       }
     }
+  }
+
+  // A carcass with meat still on it, if there is one
+  corpse() {
+    for (const c of this.creatures) {
+      if (c.dead && c.foodChunks > 0) return c;
+    }
+    return null;
   }
 
   damage(creature, dmg) {

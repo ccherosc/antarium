@@ -9,6 +9,7 @@ export class Controls {
     this.antSystem = antSystem;
     this.activeTool = 'food';
     this.inspectInfo = null;
+    this.mutedUntil = 0;   // clicks on the farm count for nothing until then
 
     this._setupButtons();
     this._setupSliders();
@@ -34,13 +35,13 @@ export class Controls {
     });
 
     document.getElementById('btn-zoom-in')?.addEventListener('click', () => {
-      this.camera.zoomAt(1.3, this.camera.cw / 2, this.camera.ch / 2);
+      this.camera.zoomBy(1.3);
     });
     document.getElementById('btn-zoom-out')?.addEventListener('click', () => {
-      this.camera.zoomAt(0.77, this.camera.cw / 2, this.camera.ch / 2);
+      this.camera.zoomBy(0.77);
     });
     document.getElementById('btn-zoom-reset')?.addEventListener('click', () => {
-      this.camera.fitWorld();
+      this.camera.fitWorld(false);
     });
   }
 
@@ -83,6 +84,7 @@ export class Controls {
   }
 
   handleTileClick(tx, ty, world) {
+    if (performance.now() < this.mutedUntil) return;
     if (this.activeTool === 'food') {
       if (world.placeFood(tx, ty, 80)) {
         world.dirty = true;
@@ -95,17 +97,12 @@ export class Controls {
       }
     } else if (this.activeTool === 'inspect') {
       this._inspect(tx, ty, world);
-    } else if (this.activeTool === 'soil') {
-      if (world.get(tx, ty) === TILE.TUNNEL || world.get(tx, ty) === TILE.CHAMBER) {
-        world.set(tx, ty, TILE.SOIL);
-        world.dirty = true;
-      }
     }
   }
 
   _inspect(tx, ty, world) {
     const t = world.get(tx, ty);
-    const typeNames = ['Air', 'Surface', 'Soil', 'Tunnel', 'Chamber', 'Glass', 'Food', 'Water', 'Egg'];
+    const typeNames = ['Air', 'Surface', 'Soil', 'Tunnel', 'Chamber', 'Glass', 'Food', 'Water', 'Egg', 'Anthill', 'Rock'];
     const panel = document.getElementById('inspect-panel');
     const content = document.getElementById('inspect-content');
     if (!panel || !content) return;
