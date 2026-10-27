@@ -150,35 +150,70 @@ a whole number; anything else prints the usage and exits 2):
 
 ---
 
-## T0.7 [H] Tiny event bus in `src/events.js`
+## T0.7 [H] Tiny event bus in `src/events.js` — DONE
 
-**Why:** Survival threats, milestones, sounds and the director all want "tell me when X
-happens" without reaching into `ants.js`.
+As built: `on(type, fn)` and `emit(type, data)` sit below `logEvent`/`onEvent` in `src/events.js`
+(those two are unchanged), plus the eight one-line emits below. The sketch was tightened in four
+ways, so that a careless listener can't hurt the simulation or the other listeners:
+- Handlers are kept in a `Map`, not `{}`: with `{}` a type called `constructor` or `toString`
+  finds `Object`'s own property and breaks `on`/`emit`.
+- `on` returns a function that removes just that registration (the sketch's `filter(f => f !== fn)`
+  removed every registration of the same function). Calling it twice is harmless, and once it has
+  been called the handler is not called again, not even by an emit already under way.
+- The list for a type is replaced on every `on` and unsubscribe, never edited, so an emit walks the
+  list it started with: a handler added during an emit first hears the next one.
+- `emit` catches what a handler throws, reports it (`console.error("Handler for 'dawn' threw:",
+  e)`) and carries on with the other handlers; the sketch let it escape into the sim step. A broken
+  listener can't hide, though: `npm test` fails on any `console.error` from the page.
 
-1. Add to `src/events.js` (keep `logEvent`/`onEvent` as they are):
-   ```js
-   const handlers = {};
-   // Typed game events: on('hatch', fn) / emit('hatch', { x, y })
-   export function on(type, fn) {
-     (handlers[type] ||= []).push(fn);
-     return () => { handlers[type] = handlers[type].filter(f => f !== fn); };
-   }
-   export function emit(type, data) {
-     const list = handlers[type];
-     if (list) for (const fn of list) fn(data);
-   }
-   ```
-2. Add **one line** `emit(...)` at each place below. Don't restructure the functions.
+The emits (the dusk `else if` got braces to hold its two lines):
+- `dawn { day }`: first line of `_dawn`, before its bad-weather early return. `day` is `sky.day`, so
+  the first dawn of a new colony is day 2 (it starts in the morning of day 1). `dusk { day }` is
+  next to the dusk `logEvent`.
+- `rainStart {}` and `rainEnd {}` next to their `logEvent`s; `flight {}` after `startNuptialFlight`.
+- `hatch { x, y }`: last line of `_hatch`, where the egg was (the same as `antSystem.lastHatch`).
+- `death { cause }`: last line of `_kill`; `'age'`, `'fight'` or `'starved'`. An alate leaving in the
+  nuptial flight is not a death.
+- `projectDone { kind }`: last line of `_completeProject`; `'gallery'`, `'link'` or `'prospect'`.
 
-   | Event | Where | Data |
-   |---|---|---|
-   | `dawn` | `sky.js` `_dawn` (first line) | `{ day }` |
-   | `dusk` | `sky.js` `update`, next to the dusk `logEvent` | `{ day }` |
-   | `rainStart` / `rainEnd` | `sky.js` `_weather`, next to the matching `logEvent`s | `{}` |
-   | `flight` | `sky.js` `_flight`, after `startNuptialFlight` | `{}` |
-   | `hatch` | `ants.js` `_hatch` | `{ x: e.x, y: e.y }` |
-   | `death` | `ants.js` `_kill` | `{ cause }` |
-   | `projectDone` | `world.js` `_completeProject` | `{ kind: p.kind }` |
+Nothing in the game listens yet. To watch from a `?debug` session:
+`(await import('/src/events.js')).on('dawn', d => console.log('dawn', d))` (that is the module the
+game itself uses; `window.__pa` was not widened for it). Done that way over four days: dawns for
+days 2-5, dusks for days 1-4, one rain, one flight, 278 hatches, 29 deaths and 19 finished projects.
 
-**Done when:** `on('dawn', d => console.log('dawn', d))` in a debug session logs each
-dawn; `npm test` passes.
+Test: a new `events` check in `tests/smoke.mjs` (about 3 s):
+- The bus on its own: delivery in order, to the right type, as the very object emitted;
+  unsubscribing one of a function's two registrations, and twice; handlers removed and added during
+  an emit; a throwing handler (reported with the event's name, the others and the emitter carry on);
+  type names `Object` has; `logEvent` still reaching `onEvent`.
+- A real colony, with the game loop stopped and the check as the clock, played a day at a time until
+  every event has fired (2-3 days; it gives up after 10). A death is made, not waited for: one ant
+  with no health, one at its lifespan. Then each event must carry what it should: `dawn`/`dusk`
+  `{ day }` equal to `sky.day` and taking turns day after day; rain starting and ending in turn;
+  `rainStart`/`rainEnd`/`flight` carrying `{}`; `hatch` `{ x, y }` equal to `lastHatch`; `death` a
+  cause; `projectDone` the kind of the project that finished. And exactly one `hatch` for each
+  `_hatchCount`, one `death` for each of `antSystem.deaths` and one `projectDone` for each call of
+  `world._completeProject` (the check wraps that method to count the calls and read the kind).
+- `npm test -- <names>` runs just those checks (`boot`, `settings`, `saves`, `events`,
+  `screensaver`, `survival`), e.g. `npm test -- events saves`. An unknown name prints the list and
+  exits 2; a filtered run ends "All passed (just events)".
+- It reaches for `_hatchCount`, `deaths`, `lastHatch`, `world._completeProject` and an ant's `hp`,
+  `age` and `lifespan`; rename one and the check fails and says what is gone, it doesn't go quiet.
+  It makes no `'starved'` death: that passes through the same emit line as the two it does make.
+
+Mutation-tested: 45 deliberate breaks, each making the check fail with the right message.
+- 16 in the bus: no `live` check in `emit`; `live` never cleared; `on` pushing in place; an
+  unsubscribe that splices in place (idempotent or not); unsubscribing by function; no
+  `try`/`catch`; a silent `catch`; an error that doesn't name the event; `{}` for the `Map`; no guard
+  for a type nobody listens to; a copy of the data; reverse order; every type hearing every emit;
+  `logEvent` not telling its listeners; its repeated-line filter gone.
+- 13 in `sky.js`, 11 in `ants.js`, 5 in `world.js`: each of the eight emits deleted; wrong or
+  missing data; `dawn` emitted twice; `dusk` on every night tick; rain start announced as rain end;
+  `hatch` emitted only with the every-4th-hatch log line, before the colony is updated, or twice;
+  `death` for fights only, with a fixed cause, with an index, or twice; `projectDone` with a fixed
+  kind, the project id, twice, or for galleries only.
+- Writing them showed two blind spots in the check as first written, both now closed. Six mutants
+  got through that version (tried): `on` pushing in place (its one add-during-an-emit came after
+  an unsubscribe, which hid it; it has a scenario of its own now), `hatch` emitted twice or only
+  every 4th time, `death` or `projectDone` emitted twice, and `projectDone` with a fixed kind
+  (nothing held the events to one per occurrence, naming the right thing; the counts above do).

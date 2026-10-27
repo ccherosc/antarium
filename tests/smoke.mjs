@@ -1,7 +1,9 @@
 // npm test — smoke test. Loads each mode in a real browser at 8x speed and fails on any page
 // error, stalled clock, empty colony, NaN ant position or blank canvas, then saves the colony
 // and checks the reload resumes it. It also walks the normal menu -> tutorial path, which ?debug
-// skips, and checks that settings persist and that a save from an older build still resumes.
+// skips, and checks that settings persist, that a save from an older build still resumes and that
+// the events the simulation emits reach the event bus. `npm test -- events saves` runs just the
+// named checks (boot, settings, saves, events, or a mode from src/modes.js).
 // Numbers can pass while the picture is wrong, so always look at the screenshots this writes to
 // tests/out/.
 import fs from 'node:fs';
@@ -20,6 +22,15 @@ const MIN_SECONDS = 10;    // ...and at least this much real time, so camera/dir
 const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
+
+const CHECKS = ['boot', 'settings', 'saves', 'events', ...MODES];
+const only = process.argv.slice(2);   // the checks to run; none named means all of them
+const unknown = only.filter(name => !CHECKS.includes(name));
+if (unknown.length) {
+  console.error(`unknown check ${unknown.join(', ')}; the checks are ${CHECKS.join(', ')}`);
+  process.exit(2);
+}
+const wanted = name => !only.length || only.includes(name);
 
 fs.mkdirSync(OUT, { recursive: true });
 const server = await serve(0);   // port 0: any free port
@@ -356,14 +367,198 @@ async function runSaves() {
   report('saves', problems, 'old save resumes, newer refused, New Colony wipes both, extras');
 }
 
+// The event bus (src/events.js): delivery, unsubscribing and a handler that throws, then a real
+// colony played until every event the simulation emits has fired, each carrying what it should.
+// Nothing in the game listens yet, so this is the only thing that notices a lost or wrong emit.
+async function runEvents() {
+  const TYPES = ['dawn', 'dusk', 'rainStart', 'rainEnd', 'flight', 'hatch', 'death', 'projectDone'];
+  const MAX_DAYS = 10;   // the first rain and the first nuptial flight take a few days to come
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const ctx = await browser.newContext({ viewport: VIEWPORT });
+  const page = await ctx.newPage();
+  const errors = watch(page);
+  let days = 0;
+  try {
+    await page.goto(`${base}?debug&new&mode=screensaver`);
+    await page.waitForFunction(() => window.__pa, null, { timeout: 20_000 });
+    await page.evaluate(() => window.__pa.gameLoop.stop());   // from here on we are the clock
+
+    // the bus on its own
+    const bus = await page.evaluate(async () => {
+      const { on, emit, logEvent, onEvent } = await import('/src/events.js');
+      const out = {};
+
+      // reaches the right type, in the order registered, as the very object that was emitted
+      const got = [], sent = { n: 1 };
+      on('a', d => got.push(['first', d]));
+      on('a', d => got.push(['second', d]));
+      on('b', () => got.push(['wrong type']));
+      emit('a', sent);
+      emit('nobody listens');
+      out.delivery = got.map(g => g[0]).join();
+      out.sameObject = got.every(g => g[1] === sent);
+
+      // unsubscribing removes just that registration, and doing it twice changes nothing
+      let n = 0;
+      const bump = () => n++;
+      const off1 = on('c', bump), off2 = on('c', bump);
+      off1(); off1();
+      emit('c');
+      out.callsWithOneOff = n;
+      off2();
+      emit('c');
+      out.callsWithBothOff = n - out.callsWithOneOff;
+
+      // removed during an emit, a handler is not called again; added during one, it hears the next
+      const order = [];
+      let offB;
+      const offA = on('d', () => { order.push('A'); offB(); offA(); on('d', () => order.push('late')); });
+      offB = on('d', () => order.push('B'));
+      on('d', () => order.push('C'));
+      emit('d');
+      out.firstEmit = order.join();
+      order.length = 0;
+      emit('d');
+      out.secondEmit = order.join();
+
+      // added with nothing taken away, a handler still first hears the next emit
+      const added = [];
+      on('f', () => { added.push('first'); on('f', () => added.push('late')); });
+      emit('f');
+      out.addedFirst = added.join();
+      added.length = 0;
+      emit('f');
+      out.addedSecond = added.join();
+
+      // a handler that throws is reported, and the others and the emitter carry on
+      const real = console.error, reported = [];
+      console.error = (...a) => reported.push(a);
+      const ran = [];
+      on('e', () => { throw new Error('boom'); });
+      on('e', () => ran.push('after'));
+      try { emit('e', 1); out.threw = false; } catch { out.threw = true; } finally { console.error = real; }
+      out.ran = ran.join();
+      out.reported = reported.length;
+      out.namedTheType = String(reported[0]?.[0]).includes("'e'");
+
+      // a type is just a name, even one that Object itself has
+      const hits = [];
+      on('constructor', d => hits.push(d));
+      for (const t of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) emit(t, t);
+      out.names = hits.join();
+
+      // and the Colony Log hooks are as they were
+      const heard = [];
+      onEvent(m => heard.push(m));
+      logEvent('bus test'); logEvent('bus test');
+      out.logged = heard.join();
+      return out;
+    });
+    check(bus.delivery === 'first,second' && bus.sameObject,
+      `emit reached "${bus.delivery}" (wanted first,second)${bus.sameObject ? '' : ' and handed over a copy of the data'}`);
+    check(bus.callsWithOneOff === 1 && bus.callsWithBothOff === 0,
+      `unsubscribing one of a handler's two registrations left ${bus.callsWithOneOff} calls (wanted 1), then the other ${bus.callsWithBothOff} (wanted 0)`);
+    check(bus.firstEmit === 'A,C' && bus.secondEmit === 'C,late',
+      `handlers changed during an emit ran as "${bus.firstEmit}" then "${bus.secondEmit}" (wanted A,C then C,late)`);
+    check(bus.addedFirst === 'first' && bus.addedSecond === 'first,late',
+      `a handler added during an emit ran as "${bus.addedFirst}" then "${bus.addedSecond}" (wanted first then first,late)`);
+    check(bus.threw === false && bus.ran === 'after' && bus.reported === 1 && bus.namedTheType,
+      `a throwing handler: emit ${bus.threw ? 'threw' : 'did not throw'}, the next handler ${bus.ran ? 'ran' : 'did not run'}, ` +
+      `${bus.reported} console.error calls${bus.namedTheType ? '' : ' (none naming the event)'}`);
+    check(bus.names === 'constructor', `event names that Object has were heard as "${bus.names}"`);
+    check(bus.logged === 'bus test', `logEvent reached onEvent as "${bus.logged}" (wanted one bus test)`);
+
+    // the simulation's own events, from a colony played until each has fired
+    await page.evaluate(async types => {
+      const { on } = await import('/src/events.js');
+      const { sky, antSystem, world } = window.__pa.sim;
+      window.__heard = [];
+      // lastHatch is where the egg now hatching was: the hatch event has to say the same
+      for (const type of types) on(type, data => window.__heard.push({ type, data, skyDay: sky.day, lastHatch: { ...antSystem.lastHatch } }));
+      // what the game counts for itself, to hold the events to exactly one per hatching, death and finished project
+      window.__before = { hatches: antSystem._hatchCount, deaths: antSystem.deaths };
+      const finish = world._completeProject;
+      if (typeof finish !== 'function') throw new Error('world._completeProject is gone: update the events check in tests/smoke.mjs');
+      window.__finished = [];
+      world._completeProject = function (p) { window.__finished.push(p.kind); return finish.call(this, p); };
+    }, TYPES);
+    const playDay = () => page.evaluate(() => {
+      const { gameLoop, CONFIG } = window.__pa;
+      for (let i = 0; i < CONFIG.DAY_TICKS; i++) gameLoop.onUpdate(gameLoop.SIM_STEP);
+      return [...new Set(window.__heard.map(e => e.type))];
+    });
+    let seen = [];
+    // not waiting for death: old age and fights are down to chance, so one of each is made below
+    while (days < MAX_DAYS && TYPES.some(t => t !== 'death' && !seen.includes(t))) { seen = await playDay(); days++; }
+
+    const causes = await page.evaluate(async () => {
+      const { gameLoop, sim } = window.__pa;
+      const { ROLE } = await import('/src/config.js');
+      const mark = window.__heard.length;
+      const walkers = sim.antSystem.ants.filter(a => a.role !== ROLE.ALATE);
+      walkers[0].hp = 0;                            // dies in a fight
+      walkers[1].age = walkers[1].lifespan;         // dies of old age
+      for (let i = 0; i < 3; i++) gameLoop.onUpdate(gameLoop.SIM_STEP);
+      return window.__heard.slice(mark).filter(e => e.type === 'death').map(e => e.data.cause);
+    });
+    check(causes.includes('fight') && causes.includes('age'),
+      `an ant with no health left and one with no life left died of: ${causes.join(', ') || 'nothing reported'}`);
+
+    const { heard, counted } = await page.evaluate(() => {
+      const { antSystem } = window.__pa.sim;
+      return {
+        heard: window.__heard,
+        counted: { hatch: antSystem._hatchCount - window.__before.hatches, death: antSystem.deaths - window.__before.deaths, projects: window.__finished },
+      };
+    });
+    const of = type => heard.filter(e => e.type === type);
+    const keys = e => e.data && typeof e.data === 'object' ? Object.keys(e.data).sort().join() : String(e.data);
+    for (const t of TYPES) check(of(t).length > 0, `${t} never fired in ${days} days`);
+
+    // dawn and dusk say which day it is, and take turns day after day
+    const sun = heard.filter(e => e.type === 'dawn' || e.type === 'dusk');
+    const badSun = sun.find(e => keys(e) !== 'day' || e.data.day !== e.skyDay);
+    check(!badSun, badSun && `${badSun.type} carried ${JSON.stringify(badSun.data)} on day ${badSun.skyDay}`);
+    for (let i = 1; i < sun.length; i++) {
+      const p = sun[i - 1], e = sun[i];
+      if (e.type === (p.type === 'dawn' ? 'dusk' : 'dawn') && e.data.day === p.data.day + (p.type === 'dusk' ? 1 : 0)) continue;
+      problems.push(`${p.type} of day ${p.data.day} was followed by ${e.type} of day ${e.data.day}`);
+      break;
+    }
+    const rain = heard.filter(e => e.type === 'rainStart' || e.type === 'rainEnd');
+    check(rain.every((e, i) => e.type === (i % 2 ? 'rainEnd' : 'rainStart')), `rain came as ${rain.map(e => e.type).join(', ')}`);
+    const dataless = ['rainStart', 'rainEnd', 'flight'].flatMap(of).find(e => keys(e) !== '');
+    check(!dataless, dataless && `${dataless.type} carried ${JSON.stringify(dataless.data)} (wanted none)`);
+    const badHatch = of('hatch').find(e => keys(e) !== 'x,y' || e.data.x !== e.lastHatch.x || e.data.y !== e.lastHatch.y);
+    check(!badHatch, badHatch && `hatch carried ${JSON.stringify(badHatch.data)} for an egg at ${JSON.stringify(badHatch.lastHatch)}`);
+    const badDeath = of('death').find(e => keys(e) !== 'cause' || typeof e.data.cause !== 'string');
+    check(!badDeath, badDeath && `death carried ${JSON.stringify(badDeath.data)} (wanted a cause)`);
+    const badProject = of('projectDone').find(e => keys(e) !== 'kind' || typeof e.data.kind !== 'string' || !e.data.kind);
+    check(!badProject, badProject && `projectDone carried ${JSON.stringify(badProject.data)} (wanted a kind)`);
+
+    // one event for every hatching and death, and one per finished project, naming its kind
+    for (const t of ['hatch', 'death']) check(of(t).length === counted[t], `${of(t).length} ${t} events for ${counted[t]} in the game's own count`);
+    const kinds = of('projectDone').map(e => e.data.kind);
+    check(kinds.join() === counted.projects.join(), `projectDone named ${kinds.join() || 'nothing'} for projects that were ${counted.projects.join() || 'none'}`);
+  } catch (e) {
+    problems.push(e.message.split('\n')[0]);
+    await shot(page, 'events');   // leave a picture of wherever it got stuck
+  }
+  problems.push(...errors);
+  await ctx.close();
+  report('events', problems, `bus works, and all ${TYPES.length} events fired within ${days} days`);
+}
+
 try {
-  await runBoot();
-  await runSettings();
-  await runSaves();
-  for (const mode of MODES) await runMode(mode);
+  if (wanted('boot')) await runBoot();
+  if (wanted('settings')) await runSettings();
+  if (wanted('saves')) await runSaves();
+  if (wanted('events')) await runEvents();
+  for (const mode of MODES) if (wanted(mode)) await runMode(mode);
 } finally {
   await browser.close();
   server.close();
 }
-console.log(anyFailed ? 'FAILED' : 'All passed', '- screenshots in tests/out/');
+console.log(`${anyFailed ? 'FAILED' : 'All passed'}${only.length ? ` (just ${only.join(', ')})` : ''} - screenshots in tests/out/`);
 process.exit(anyFailed ? 1 : 0);

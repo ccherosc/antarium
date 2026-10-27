@@ -1,5 +1,5 @@
 import { TILE, ROLE, STATE, CARRY, ROOM, CONFIG } from '../config.js';
-import { logEvent } from '../events.js';
+import { logEvent, emit } from '../events.js';
 import { rules } from '../modes.js';
 import { Nav, FAR } from './nav.js';
 
@@ -302,6 +302,7 @@ export class AntSystem {
     this.lastHatch = { x: e.x, y: e.y, tick: w.tick };
     w.fx.push({ t: 'hatch', x: e.x, y: e.y });
     if (this._hatchCount % 4 === 1) logEvent(`Egg hatched — new ${ROLE_NAME[role]}`);
+    emit('hatch', { x: e.x, y: e.y });
   }
 
   _eat(ant) {
@@ -328,6 +329,7 @@ export class AntSystem {
     this.world.fx.push({ t: 'death', x: ant.x, y: ant.y });
     if (cause === 'starved') logEvent('An ant died of starvation');
     else if (cause === 'fight') logEvent('An ant fell defending the colony');
+    emit('death', { cause });
   }
 
   // Let go of whatever the ant had in hand, so somebody else can pick it up

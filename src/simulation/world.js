@@ -1,5 +1,5 @@
 import { TILE, CONFIG, ROOM } from '../config.js';
-import { logEvent } from '../events.js';
+import { logEvent, emit } from '../events.js';
 import { rules } from '../modes.js';
 
 const { AIR, SURFACE, SOIL, TUNNEL, CHAMBER, GLASS, FOOD, WATER, EGG, ANTHILL, ROCK } = TILE;
@@ -936,6 +936,7 @@ export class World {
     } else if (p.kind === 'prospect' && this.deposits[p.dep]) {
       this.deposits[p.dep].found = true;
     }
+    emit('projectDone', { kind: p.kind });
   }
 
   // Decide whether to start something new. Runs every second or two.

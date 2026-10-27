@@ -71,7 +71,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 - [x] T0.4 [H] Settings store (`src/settings.js`)
 - [x] T0.5 [S] Save migrations + per-mode extra state
 - [x] T0.6 [S] Soak test (100 in-game days, headless)
-- [ ] T0.7 [H] Tiny event bus (`on`/`emit`) in `src/events.js`
+- [x] T0.7 [H] Tiny event bus (`on`/`emit`) in `src/events.js`
 
 ### M1 — Commercial polish → `M1-polish.md`
 - [ ] T1.1 [S] Fast-forward engine (instant catch-up + pre-grown new colonies)

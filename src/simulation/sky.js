@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { logEvent } from '../events.js';
+import { logEvent, emit } from '../events.js';
 import { rules } from '../modes.js';
 
 // The colony's clock and weather. Everything above ground — and the daily rhythm
@@ -48,12 +48,16 @@ export class Sky {
     this.time++;
     this._calc();
     if (wasNight && !this.isNight) this._dawn(world, antSystem);
-    else if (!wasNight && this.isNight) logEvent('Dusk — the colony settles for the night');
+    else if (!wasNight && this.isNight) {
+      logEvent('Dusk — the colony settles for the night');
+      emit('dusk', { day: this.day });
+    }
     this._weather(world);
     this._flight(antSystem);
   }
 
   _dawn(world, antSystem) {
+    emit('dawn', { day: this.day });
     logEvent('Dawn — the foragers head out');
     if (this.weather !== 'clear') return;
     // dew on the grass: the day's first drink. With no keeper to water it, the farm
@@ -80,6 +84,7 @@ export class Sky {
         this.weather = 'rain';
         this._wTimer = 1500 + Math.floor(Math.random() * 1300);
         logEvent('Rain — the foragers shelter below');
+        emit('rainStart', {});
       }
     } else {
       this.overcast = Math.min(1, this.overcast + 0.0022);
@@ -91,6 +96,7 @@ export class Sky {
         this.weather = 'clear';
         this._nextRain = this.time + D * (1.5 + Math.random() * 1.7);
         logEvent('The rain passes');
+        emit('rainEnd', {});
       }
     }
   }
@@ -103,6 +109,7 @@ export class Sky {
     this.flightUntil = this.time + 1900;
     antSystem.startNuptialFlight(14 + Math.min(22, Math.floor(antSystem.population / 20)));
     logEvent('Nuptial flight — winged ants take to the sky!');
+    emit('flight', {});
   }
 
   save() {
