@@ -24,7 +24,8 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   `settings.get(key)`, react with `settings.onChange`. Add a new option to its `DEFAULTS`
   rather than adding another localStorage key.
 * If you change what a save contains, follow the save rules in `src/saveLoad.js` (bump
-  VERSION and add a migration) so existing colonies still load.
+  VERSION and add a migration) so existing colonies still load. `tests/fixtures/` holds a real
+  old save that `npm test` must keep resuming.
 * Preserve the playable game. After every change:
   1. `npm test` (smoke test: every mode loads, runs, throws no errors)
   2. Look at the screenshots it writes to `tests/out/` to check visuals.

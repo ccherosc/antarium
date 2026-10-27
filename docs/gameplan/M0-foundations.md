@@ -70,36 +70,41 @@ As built:
 
 ---
 
-## T0.5 [S] Save migrations + per-mode extra state
+## T0.5 [S] Save migrations + per-mode extra state — DONE
 
-**Why:** today the storage key contains the version (`pixelants_v2_<mode>`), so bumping
-VERSION silently orphans every player's colony. Paying customers must never lose a colony.
-
-**File:** `src/saveLoad.js`.
-
-1. Key no longer includes the version: `pixelants_<mode>`. `hasSave`/`getSaveInfo`/
-   `loadGame` fall back to reading the legacy key `pixelants_v2_<mode>`; after a
-   successful load, the next save writes the new key and removes the legacy one.
-2. Migrations:
-   ```js
-   const VERSION = 3;
-   // MIGRATIONS[n] turns a version-n save into a version-(n+1) save
-   const MIGRATIONS = {
-     2: d => ({ ...d, extra: {} }),
-   };
-   ```
-   `loadGame`: `while (d.version < VERSION) { d = MIGRATIONS[d.version](d); d.version++; }`;
-   refuse saves from the future (`d.version > VERSION`).
-3. Extra state: `saveGame` writes `extra: {}` holding `sim[k].save()` for each
-   `k` in `const EXTRAS = ['run', 'decor']` that exists on `sim` (Survival run state T5.1,
-   decorations T4.2). `loadGame` calls `sim[k].load(d.extra[k])` when both exist.
-4. `getSaveInfo` also returns `ts` and `name` (`d.name`, colony name from T4.6; may be
-   undefined).
-5. Write a comment block at the top of `saveLoad.js`: "Changing what a save holds? Bump
-   VERSION and add a MIGRATIONS entry. Never delete a migration."
-
-**Done when:** a colony saved before this change (key `pixelants_v2_screensaver`) still
-resumes after it; `npm test` passes; save → reload → resume works in both modes.
+As built (`src/saveLoad.js`; the comment at its top is the rule to follow):
+- A colony lives under `pixelants_<mode>` with the version inside the save, so bumping `VERSION`
+  (exported, now 3) no longer orphans it. `hasSave`, `getSaveInfo` and `loadGame` fall back to
+  the old `pixelants_v2_<mode>`. Loading changes nothing in storage; the first `saveGame` writes
+  the new key and only then removes the old one, so a full storage can't cost a player their
+  colony. `deleteSave` removes both, or New Colony would bring the old copy back.
+- `MIGRATIONS[n]` turns a version-n save into n+1 and `loadGame` walks the chain. A save from a
+  newer build, or with no usable version, is refused with a `console.warn`, and `main.js` starts
+  a fresh colony ("Save corrupted — starting fresh"). **Changing what a save holds: bump
+  `VERSION`, add a migration, never delete one.**
+- `EXTRAS = ['run', 'decor']`: each one that exists on `sim` is saved into `extra`, and
+  `load(data)` is called only when the save has data for it. Neither system exists yet
+  (Survival run state T5.1, decorations T4.2).
+- `getSaveInfo` also returns `ts` and `name`. `buildSave(sim)` is exported: it is what
+  `saveGame` writes, and T0.6 measures it.
+- `tests/fixtures/save-v2-screensaver.json` is a real version-2 save from the old code (about
+  6,000 ticks, 40 ants). The `saves` check in `npm test`: the menu offers it and New Colony
+  deletes it; it resumes (world, sky clock, ants, eggs, queen, peak population) with storage
+  untouched until the player saves; saving writes the current format and removes the old key;
+  that save resumes too; a version-999 save is refused, the player is told, and it stays in
+  storage; `extra` round-trips (with stand-in systems) and a save from before `extra` loads
+  without touching them. Each mode's own check also saves, reloads and compares the colony
+  (`tests/out/<mode>-resumed.png`).
+- **Before the next `VERSION` bump**, save a real colony into `tests/fixtures/` and make `saves`
+  resume it too: the v2 fixture alone can't prove the new migration.
+- Mutation-tested: dropping the migration, either legacy-key removal, the legacy fallback, the
+  future-version refusal, the extras save / load / "only if present" guard, `ts` and `name`, the
+  restore of world, sky, colony, queen or peak population, or putting the version back in the
+  key each fail `npm test`. One mutant survives on purpose: `stats.day` is recomputed from the
+  sky every tick, so restoring it from the save changes nothing.
+- Known gap: if `loadGame` fails (a corrupt save, a save from a newer build after a rollback, a
+  broken future migration) `main.js` starts a fresh colony and the next save overwrites the
+  unreadable one. Keeping a copy would double the storage a big colony needs, so it was left.
 
 ---
 
@@ -115,8 +120,8 @@ resumes after it; `npm test` passes; save → reload → resume works in both mo
   Run one day per `evaluate` call so the page stays responsive.
 - After each day record: day, population, capacity, eggs, foodStore, waterStore, queen
   health, ants with non-finite x/y, `performance.memory.usedJSHeapSize` (MB), ms per tick
-  for that day, save size (`JSON.stringify` of what `saveGame` would write — export a
-  `buildSave(sim)` helper from `saveLoad.js` for this).
+  for that day, save size (`JSON.stringify` of what `saveGame` would write — T0.5 already
+  exports `buildSave(sim)` from `saveLoad.js`; in the page: `await import('/src/saveLoad.js')`).
 - Write `tests/out/soak-<mode>.csv`; print a compact table.
 - Fail (exit 1) on: any page error; any non-finite ant; Zen population hitting 0; heap at
   the last day > 1.5× heap at day 5; ms/tick at the last day > 2× day 5 at similar

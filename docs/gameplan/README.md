@@ -69,7 +69,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 - [x] T0.2 [H] Debug hook, URL params, `package.json`, local server, smoke test
 - [x] T0.3 [S] Mode rules table (`src/modes.js`) replacing scattered mode checks
 - [x] T0.4 [H] Settings store (`src/settings.js`)
-- [ ] T0.5 [S] Save migrations + per-mode extra state
+- [x] T0.5 [S] Save migrations + per-mode extra state
 - [ ] T0.6 [S] Soak test (100 in-game days, headless)
 - [ ] T0.7 [H] Tiny event bus (`on`/`emit`) in `src/events.js`
 
@@ -159,5 +159,5 @@ stronger model write a detailed spec per update before Sonnet builds it.
 | Side panel, tools, sliders | `src/ui/dashboard.js`, `src/ui/controls.js` | |
 | Toolbar, keys, panel hide, toasts, captions | `src/ui/hud.js` | keys: C tour, F fullscreen, H panel, Space pause |
 | Tutorial | `src/ui/tutorial.js` | |
-| Save/load | `src/saveLoad.js` | localStorage key `pixelants_v2_<mode>` |
+| Save/load | `src/saveLoad.js` | localStorage key `pixelants_<mode>`, version inside the save; `MIGRATIONS` upgrade old saves |
 | Page structure | `index.html`, `styles/main.css` | |
