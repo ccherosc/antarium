@@ -53,16 +53,17 @@ export function renderPheromoneOverlay(world) {
   return pherCanvas;
 }
 
+// True when this call made the canvas: it is blank, whatever the world says has changed
 function ensureOffscreen(world) {
   const w = world.width * C.TILE_SIZE;
   const h = world.height * C.TILE_SIZE;
-  if (!offscreen) {
-    offscreen = document.createElement('canvas');
-    offscreen.width = w;
-    offscreen.height = h;
-    offCtx = offscreen.getContext('2d');
-    offCtx.imageSmoothingEnabled = false;
-  }
+  if (offscreen) return false;
+  offscreen = document.createElement('canvas');
+  offscreen.width = w;
+  offscreen.height = h;
+  offCtx = offscreen.getContext('2d');
+  offCtx.imageSmoothingEnabled = false;
+  return true;
 }
 
 // Low-bias hash — no diagonal correlation
@@ -283,10 +284,12 @@ function drawTile(ctx, tile, x, y, world) {
 }
 
 export function renderWorld(camera, world) {
-  ensureOffscreen(world);
+  const blank = ensureOffscreen(world);
 
-  if (world.dirty) {
-    const full = world.dirtyTiles.size === 0 || world.dirtyTiles.size > 6000;
+  // A colony that ran before its first frame (grown or caught up) has changed a few thousand
+  // tiles, but a canvas nobody has drawn on needs all of them
+  if (blank || world.dirty) {
+    const full = blank || world.dirtyTiles.size === 0 || world.dirtyTiles.size > 6000;
     if (full) {
       for (let y = 0; y < world.height; y++)
         for (let x = 0; x < world.width; x++)

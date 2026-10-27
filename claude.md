@@ -30,7 +30,8 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   1. `npm test` (smoke test: every mode loads, runs, throws no errors)
   2. Look at the screenshots it writes to `tests/out/` to check visuals.
 * `npm run serve` starts a local server. Add `?debug` to the URL to get `window.__pa`
-  (`sim`, `gameLoop`, `camera`, `director`, `hud`, `GameState`, `CONFIG`, `settings`) and skip the
-  tutorial; `?debug&new&mode=<mode>` also skips the menu and starts a fresh colony.
+  (`sim`, `gameLoop`, `camera`, `director`, `hud`, `GameState`, `CONFIG`, `settings`, and `startup`:
+  what the start-up fast-forward did) and skip the tutorial; it appears once the colony is ready, so
+  wait for it. `?debug&new&mode=<mode>` also skips the menu and starts a fresh colony.
 * Pushing to `master` publishes to the live site. Work on a branch per ticket; merge to
   `master` only when the user asks.

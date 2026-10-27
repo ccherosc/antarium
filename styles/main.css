@@ -245,6 +245,26 @@ body.no-panel #dashboard { transform: translateX(104%); }
   gap: 18px;
 }
 #mode-select.hidden { display: none; }
+
+/* Founding / catching up: the same dark cover as the menu, under the tutorial. src/main.js
+   fades it out (FF_FADE_MS) and then hides it. */
+#founding {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+  background: rgba(8,5,2,0.97);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+#founding.hidden { display: none; }
+#founding.fading { opacity: 0; pointer-events: none; }
+.fd-text { font-size: 12px; letter-spacing: 4px; color: var(--accent2); }
+.fd-bar  { width: 220px; height: 3px; background: var(--border); }
+.fd-fill { width: 0; height: 100%; background: var(--glow); box-shadow: 0 0 8px rgba(106,173,204,0.6); }
+
 #ms-confirm {
   display: flex;
   flex-direction: column;

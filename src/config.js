@@ -130,6 +130,18 @@ export const CONFIG = {
   FOOD_RESPAWN_INTERVAL: 700,
   FOOD_RESPAWN_COUNT: 3,
 
+  // ── Fast-forward — run before the first frame (src/app/fastForward.js, src/main.js) ──
+  FF_SLICE_MS: 12,             // ticks run this long between yields, so the page stays responsive
+  FF_FADE_MS: 400,             // the "founding your colony" overlay fades out over this long
+  PREGROW_POP: 45,             // a new colony is grown to this many ants (and until the sun is up, below)...
+  PREGROW_DAYS: 1.5,           // ...or this many in-game days...
+  PREGROW_BUDGET_MS: 8000,     // ...or this long on the clock, whichever comes first
+  PREGROW_START_PHASE: 0,      // it is founded at midnight (not DAY_START_PHASE): the nest takes about half a day to grow,
+  PREGROW_MIN_LIGHT: 0.9,      // so it opens around noon, and is never done until it is at least this light (0 night, 1 day)
+  CATCHUP_MIN_MS: 30000,       // a resumed colony catches up only if its save is older than this
+  CATCHUP_MAX_DAYS: 0.5,       // ...and then for at most this many in-game days...
+  CATCHUP_BUDGET_MS: 5000,     // ...or this long on the clock
+
   MIN_ZOOM: 0.18,
   MAX_ZOOM: 10,
 

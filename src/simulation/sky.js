@@ -14,9 +14,9 @@ const smooth = (a, b, x) => {
 };
 
 export class Sky {
-  constructor() {
+  constructor(startPhase = CONFIG.DAY_START_PHASE) {
     const D = CONFIG.DAY_TICKS;
-    this.time = CONFIG.DAY_START_PHASE * D;  // ticks since the first midnight
+    this.time = startPhase * D;  // ticks since the first midnight
     this.phase = 0;        // 0 midnight · 0.25 sunrise · 0.5 noon · 0.75 sunset
     this.day = 1;
     this.elev = 0;         // sun height, −1 (midnight) … +1 (noon)

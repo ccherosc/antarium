@@ -74,7 +74,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 - [x] T0.7 [H] Tiny event bus (`on`/`emit`) in `src/events.js`
 
 ### M1 — Commercial polish → `M1-polish.md`
-- [ ] T1.1 [S] Fast-forward engine (instant catch-up + pre-grown new colonies)
+- [x] T1.1 [S] Fast-forward engine (instant catch-up + pre-grown new colonies)
 - [ ] T1.2 [S] Frame cap, power saving, pause when hidden
 - [ ] T1.3 [S] Ambient soundscape (WebAudio, driven by the sky)
 - [ ] T1.4 [H] Settings menu UI

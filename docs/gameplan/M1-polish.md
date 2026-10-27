@@ -7,35 +7,104 @@ Needs M0 done (`npm test`, `rules()`, `settings`, `on/emit`).
 
 ---
 
-## T1.1 [S] Fast-forward engine (catch-up + pre-grown colonies)
+## T1.1 [S] Fast-forward engine (catch-up + pre-grown colonies) — DONE
 
-**Why:** a brand-new Zen colony is 30 ants and a hole for the first minutes — a poor first
-impression for a screensaver. And a resumed colony should feel like life went on.
+As built (`src/app/fastForward.js`, `src/main.js`; the numbers are the "Fast-forward" block of
+`CONFIG`):
+- `fastForward({ step, maxTicks, until, budgetMs = 8000, sliceMs = CONFIG.FF_SLICE_MS, onProgress })`
+  resolves to the ticks it ran: `step()` for about `sliceMs` (12 ms), then a `setTimeout` yield so
+  the page can paint. Beyond the sketch: `sliceMs` is an option and a slice always runs at least
+  one tick; `until()` is asked before every tick, so a colony that is ready already runs none;
+  `onProgress(f)` gets whichever of ticks/`maxTicks` and time/`budgetMs` is further along, then `1`
+  once as it stops (also with `maxTicks: 0`); a `step` that throws rejects the promise.
+- `main.js`: `function tick(dt)` is the old `GameLoop` callback, now shared by both.
+  `fastForwardStart()` runs between building the colony and `gameLoop.start()`, behind a
+  `#founding` overlay (a line of text and a bar, faded out over `FF_FADE_MS`), and returns what it
+  did: `{ kind: 'pregrow', ticks }`, `{ kind: 'catchUp', ticks, hatched, chambers }` or `null`. If
+  the fast-forward throws, that is logged (`console.error('Fast-forward failed; …')`) and the colony
+  starts as it is, never stuck behind the overlay.
+- **New colony** (`rules().pregrow`: Zen; Survival false; Keeper later): grown until there are
+  `PREGROW_POP` (45) ants and the sun is up, or `PREGROW_DAYS` (1.5) in-game days have passed, or
+  `PREGROW_BUDGET_MS` (8 s) has. Measured here: about 0.3 s (5.5-8.8k ticks at ~30,000 ticks/s) to a
+  nest of about 20 chambers and 45 ants, at about midday of day 1.
+- **Resumed colony** (`rules().catchUp`: Zen; Survival false): `missedTicks(ts)` from the save's
+  `ts` is 0 when the save is under `CATCHUP_MIN_MS` (30 s) old, in the future or has no `ts`;
+  otherwise at most `CATCHUP_MAX_DAYS` (0.5 day, 7,200 ticks), within `CATCHUP_BUDGET_MS` (5 s).
+  The full 7,200 ticks take 0.25-0.5 s here. Hatchings are counted with `on('hatch')` and chambers
+  with `world.chamberCount` (`stats.chamberCount` reads 0 until the first tick after a load), and
+  toasted for 7 s if there is any news: "While you were away: 74 ants hatched". A new chamber is
+  rarer than a hatching (none in the test's ten minutes away), so the toast is often only about
+  hatchings.
 
-**Create `src/app/fastForward.js`:**
-```js
-// Runs sim ticks in small slices so the page stays responsive.
-// step() runs one sim tick. Stops at maxTicks, when until() is true, or after budgetMs.
-export function fastForward({ step, maxTicks, until = () => false, budgetMs = 8000, onProgress }) { … returns Promise<ticksRun> }
-```
-Slice = run ticks for ~12 ms, then `await new Promise(r => setTimeout(r))`, call
-`onProgress(ticksRun / maxTicks)`.
+Where it departs from the ticket, and why:
+- A new colony is founded at midnight (`PREGROW_START_PHASE: 0`, not `DAY_START_PHASE`) and is not
+  done until `sky.light` is at least `PREGROW_MIN_LIGHT` (0.9). Growing takes about half a day, so
+  from the usual early-morning start it could open at dusk or in the night: a dark, empty-looking
+  first impression for a screensaver. From midnight it opens at about noon (30 runs: all in full
+  light, on day 1, 359 ms at most). `Sky` takes an optional `startPhase`; `createSim` gives it the
+  pre-grow phase only when `rules().pregrow`.
+- The catch-up overlay says "Catching up on your colony…"; the new colony's says "Founding your
+  colony…".
+- `window.__pa` now appears once the fast-forward is over, so a test that waits for it never races
+  it, and it has a `startup` field: what `fastForwardStart()` returned.
+- "Save corrupted — starting fresh" is said once the fast-forward is over; the overlay would hide it.
+- One line of rendering changed, in `src/rendering/renderWorld.js`, though the ticket names no rendering
+  file. A colony that has run before its first frame painted no soil: the first frame's
+  `forceFullRedraw` does nothing because the tile canvas does not exist yet, and `renderWorld` redraws
+  every tile only when the dirty set is empty or over 6,000, so a grown or caught-up world (a few
+  thousand dirty tiles) put its tunnels on a blank canvas and the ground came out near-black (the
+  middle of the farm averaged red 28, blue 46; brown soil is about red 108, blue 40). `ensureOffscreen`
+  now says when it has just made the canvas and `renderWorld` then draws every tile. Found by
+  measuring the colour of the farm against `master`'s.
 
-**Use it in `src/main.js`** (sim tick = the body of the `GameLoop` update callback; pull it
-out into a `function tick(dt)` so both can call it):
-1. **New colony, `rules().pregrow` true** (add `pregrow: true` to Zen and later Keeper, false
-   for Survival): before `gameLoop.start()`, show a small overlay "Founding your colony…"
-   with a progress bar, run until population ≥ 45 or 1.5 in-game days or 8 s. Then fade
-   the overlay out.
-2. **Resumed colony, `rules().catchUp` true** (Zen, Keeper): use the save's `ts` (from T0.5
-   `getSaveInfo`). Run `min(elapsedTicks, 0.5 day)` ticks with a 5 s budget. Before and after,
-   snapshot `antSystem.population`, `stats.chamberCount`, total hatched (count `hatch` events
-   via `on('hatch')`), then toast: "While you were away: 12 ants hatched · 1 new chamber".
-3. Survival never fast-forwards.
+Things to know:
+- Events emitted during a fast-forward are real: dozens of `hatch`es and a `dawn` or `dusk`. A
+  listener that must not hear them (T1.3's sound) has to be registered after `await fastForwardStart()`.
+- No save is written right after a catch-up, so closing the tab within the 60 s autosave replays
+  the same absence from the old `ts` next time (same result, 0.3 s).
+- The pre-grow assumes timers run at full speed. A background tab throttles them, so the 8 s budget
+  would cut the growth short and the nest would be smaller; the colony still starts. (Reasoned, not
+  measured.)
 
-**Done when:** a new Zen colony opens on a busy nest (≥ 45 ants) within ~8 s; resuming a
-Zen save made 10 minutes ago shows the "While you were away" toast; `npm test` passes
-(the smoke test's `?new` path now pregrows — keep its 15 s wait after the overlay closes).
+Test: a new `fastforward` check in `tests/smoke.mjs` (about 20 s; `npm test -- fastforward`):
+- The engine on its own, in Node: `maxTicks`, `until`, a colony that is ready already, `maxTicks: 0`,
+  `sliceMs: 0`, slow ticks stopped by `budgetMs` while the page's timers still get their turns,
+  progress rising within 0..1 and ending on 1, and a tick that throws.
+- New colonies, in the browser (a script run before the page's own records what the overlay says and
+  does). A mode that pre-grows opens with 45 ants or more, in daylight, on day 1, behind "Founding
+  your colony…". One that doesn't (Survival) starts as it is, on the usual morning clock, with no overlay;
+  `rules()` is also checked to say so. Founded at dusk (`PREGROW_START_PHASE` 0.6) it is grown on until
+  daylight. `PREGROW_DAYS` 0.01 grows it for exactly 144 ticks and `PREGROW_BUDGET_MS` 1 cuts it short.
+  A fault injected into the engine (the module is rewritten on its way to the page) is logged once and
+  the colony still starts and runs. Settings are changed the same way, by rewriting `config.js` on its
+  way to the page; the repo is never touched.
+- Resumed colonies, from a real Zen save with its `ts` rewritten: 5 s ago, in the future, or no `ts` is
+  left alone; a minute away catches up about 3,750 ticks, with the clocks to match; ten minutes away
+  catches up exactly the 7,200-tick cap behind "Catching up on your colony…", the hatchings counted match
+  the game's own count since the save, the chambers counted are fewer than the nest has, and the toast
+  says exactly that; `CATCHUP_BUDGET_MS` 1 cuts it short; a Survival save from ten minutes ago is left
+  alone; the old build's fixture catches up the cap and carries on.
+- In all three of the Zen cases above (a new colony, founded at dusk, ten minutes away) and in a new
+  Survival colony, the middle of the farm must be brown: more red than blue by a fifth. Brown soil reads
+  1.7 red to blue at midnight, the darkest it gets, to 2.7 at midday; the unpainted ground read 0.5-0.6.
+- Screenshots: `fastforward-screensaver`, `-survival`, `-dusk` and `-catchup` in `tests/out/`.
+
+The other checks changed with it: `boot` and `saves` wait up to 20 s for the tutorial (the new colony
+is grown first); `runMode` counts ticks from where the colony opened (a pre-grown one has run 5k+
+already, so a stalled loop would pass otherwise); `saves` pins the old-build fixture's `ts` to now,
+so that it tests loading rather than catching up, and expects the colony after a refused save to
+be a pre-grown new one.
+
+Checked by breaking things: 28 faults were put, one at a time, into a throwaway copy of the repo (the
+pre-grow's light check; the catch-up cap, 30 s minimum and future-save guard; the tick length; hatchings
+not counted or counted twice; `stats.chamberCount` in place of `world.chamberCount`; no toast; the wrong
+overlay text; a resumed colony pre-grown; Survival's rules row switched on, or `main.js` ignoring the
+`catchUp` rule; the wrong start phase; each of the three budgets ignored; the overlay never hiding; the
+renderer not drawing every tile on a canvas it had just made; a failed fast-forward not caught; the
+refused-save notice dropped; the engine without `until`, without its
+budget, without yielding, without the closing progress call, or swallowing a throwing tick). Every one made
+`npm test -- fastforward` (`saves`, for the notice) fail with the message written for it; the unbroken copy
+passed.
 
 ---
 
