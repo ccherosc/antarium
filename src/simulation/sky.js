@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import { logEvent } from '../events.js';
-import { GameState } from '../gameState.js';
+import { rules } from '../modes.js';
 
 // The colony's clock and weather. Everything above ground — and the daily rhythm
 // below it — takes its cue from here.
@@ -59,7 +59,7 @@ export class Sky {
     // dew on the grass: the day's first drink. With no keeper to water it, the farm
     // grows dew enough for about a day's drinking, however big the colony gets
     let n = 2 + Math.floor(Math.random() * 2), size = 41;
-    const want = GameState.mode === 'screensaver' && antSystem ? antSystem.population * 1.2 : 0;
+    const want = rules().dewScalesWithColony && antSystem ? antSystem.population * 1.2 : 0;
     if (want > n * size) { n = Math.min(9, Math.ceil(want / 90)); size = want / n; }
     for (let k = 0; k < n; k++) world.addPuddle(size * (0.83 + Math.random() * 0.34));
   }

@@ -1,6 +1,6 @@
 import { TILE, CONFIG, ROOM } from '../config.js';
 import { logEvent } from '../events.js';
-import { GameState } from '../gameState.js';
+import { rules } from '../modes.js';
 
 const { AIR, SURFACE, SOIL, TUNNEL, CHAMBER, GLASS, FOOD, WATER, EGG, ANTHILL, ROCK } = TILE;
 
@@ -1272,8 +1272,8 @@ export class World {
 
   update(deltaMs, sim) {
     const t = ++this.tick;
-    const screensaver = GameState.mode === 'screensaver';
-    this._digRate = 1 / (CONFIG.DIG_TICKS * (screensaver ? 1.5 : 3));
+    const mode = rules();
+    this._digRate = 1 / (CONFIG.DIG_TICKS * mode.digSpeed);
 
     // Alarm decays when no active threats — ants settle back to normal
     if (this.alarmLevel > 0) this.alarmLevel = Math.max(0, this.alarmLevel - 0.0015);
@@ -1285,19 +1285,18 @@ export class World {
       this._planTimer = 90;
       this._updateProjects(sim);
     }
-    if (--this._foodTimer <= 0) this._tickFoodSpawn(sim, screensaver);
+    if (--this._foodTimer <= 0) this._tickFoodSpawn(sim, mode);
     if (this.fx.length > 90) this.fx.splice(0, this.fx.length - 90);
 
     if (this.foodStore > this.foodCap) this.foodStore = this.foodCap;
     if (this.waterStore > this.waterCap) this.waterStore = this.waterCap;
 
-    // Screensaver: the colony forages for real, but can never actually starve
-    if (screensaver) {
-      if (this.foodStore < 200) this.foodStore = 200;
-      if (this.waterStore < 250) this.waterStore = 250;
-      this.stress = 0;
-      return;
+    // Some modes keep the stores topped up: the colony forages for real, but can't actually starve
+    if (mode.floors) {
+      if (this.foodStore < mode.floors.food) this.foodStore = mode.floors.food;
+      if (this.waterStore < mode.floors.water) this.waterStore = mode.floors.water;
     }
+    if (!mode.stress) { this.stress = 0; return; }
 
     // Update colony stress level
     const fs = Math.max(0, 1 - this.foodStore  / CONFIG.STRESS_FOOD_LOW);
@@ -1338,16 +1337,15 @@ export class World {
     if (gone) for (const i of gone) this.clearItem(i);
   }
 
-  _tickFoodSpawn(sim, screensaver) {
+  _tickFoodSpawn(sim, mode) {
     const W = this.width, skyEnd = CONFIG.SURFACE_ROW * W;
-    // more frequent and abundant in screensaver
-    this._foodTimer = screensaver ? 420 : CONFIG.FOOD_RESPAWN_INTERVAL * 2;
+    this._foodTimer = mode.foodSpawnTicks ?? CONFIG.FOOD_RESPAWN_INTERVAL * 2;
     const sky = this.sky;
     if (sky && (sky.light < 0.5 || sky.rain > 0.2)) return;   // nothing falls at night or in the rain
     let tiles = 0, amount = 0;
     for (const i of this.foodTiles) if (i < skyEnd) { tiles++; amount += this.foodAmount[i]; }
     if (tiles >= 14) return;
-    if (screensaver) {
+    if (mode.foodScalesWithColony) {
       // keep roughly a morning's foraging lying about, scaled to the colony
       const pop = sim && sim.antSystem ? sim.antSystem.population : 40;
       if (amount > 150 + pop * 2.5) return;

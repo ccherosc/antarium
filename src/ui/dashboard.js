@@ -1,4 +1,4 @@
-import { GameState } from '../gameState.js';
+import { rules } from '../modes.js';
 import { clockText } from './hud.js';
 
 const WEATHER = { clear: 'CLEAR', gathering: 'CLOUDING OVER', rain: 'RAIN' };
@@ -77,9 +77,9 @@ export class Dashboard {
 
     const modeEl = document.getElementById('stat-mode');
     if (modeEl) {
-      const survival = GameState.mode === 'survival';
-      modeEl.textContent = survival ? 'SURVIVAL' : 'SCREENSAVER';
-      modeEl.className = 'dash-mode' + (survival ? ' survival' : '');
+      const mode = rules();
+      modeEl.textContent = mode.badge;
+      modeEl.className = 'dash-mode' + (mode.cls ? ' ' + mode.cls : '');
     }
 
     if (antSystem) {

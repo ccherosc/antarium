@@ -1,4 +1,5 @@
 import { GameState } from '../gameState.js';
+import { rules } from '../modes.js';
 import { onEvent } from '../events.js';
 
 const PREFS_KEY = 'pixelants_prefs';
@@ -64,7 +65,7 @@ export class Hud {
     this.cine = false;   // the director has the camera and everything is put away
 
     const mode = GameState.mode;
-    director.auto = typeof prefs.auto[mode] === 'boolean' ? prefs.auto[mode] : mode === 'screensaver';
+    director.auto = typeof prefs.auto[mode] === 'boolean' ? prefs.auto[mode] : rules().autoTour;
     if (this._auto) this._auto.checked = director.auto;
 
     director.blocked  = () => gameLoop.speed === 0 || this._dialogUp();

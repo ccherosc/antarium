@@ -22,7 +22,7 @@ As built (the code is the spec now — read it, don't re-derive it):
 - `tests/smoke.mjs` (`npm test`, ~30 s): the normal menu → tutorial boot, then each mode at 8×
   until at least 3,000 ticks and 10 s have passed. Fails on any page error, console error or
   failed request, no ants alive, a non-finite ant position, or a blank canvas. Screenshots go
-  to `tests/out/` — look at them. Add `'keeper'` to `MODES` in the file when T4.1 lands.
+  to `tests/out/` — look at them. It runs every mode in `src/modes.js`, so Keeper (T4.1) is covered by adding its row.
 - `package.json` (scripts `serve`, `test`, `soak`; devDependency Playwright 1.60.0) and
   `package-lock.json`. If Chromium is missing: `npx playwright install chromium`.
 - `netlify.toml`: no build step, and `NPM_FLAGS = "--omit=dev"` so Netlify doesn't install
@@ -32,69 +32,21 @@ As built (the code is the spec now — read it, don't re-derive it):
 
 ---
 
-## T0.3 [S] Mode rules table (`src/modes.js`)
+## T0.3 [S] Mode rules table (`src/modes.js`) — DONE
 
-**Why:** mode behaviour is scattered over 15 `GameState.mode` checks. Adding Keeper (T4.1)
-and Survival features must become "add a row / read a field", not a hunt through 1,300-line files.
-
-**Create `src/modes.js`:**
-```js
-import { GameState } from './gameState.js';
-
-// Everything that differs between ways of playing. Read with rules().
-export const MODES = {
-  screensaver: {
-    label: 'Zen', badge: 'ZEN',
-    lifespanMult: 1.5,        // ants live longer
-    noStarvation: true,       // ants never starve
-    queenHealthFloor: 5,      // queen cannot die
-    freeEggs: true,           // laying doesn't depend on food
-    digSpeed: 1.5,            // world._digRate divisor (smaller = faster)
-    floors: { food: 200, water: 250 },   // stores never drop below (null = no floor)
-    stress: false,            // colony stress is always 0
-    foodSpawnTicks: 420,      // null = CONFIG.FOOD_RESPAWN_INTERVAL * 2
-    foodScalesWithColony: true,
-    dewScalesWithColony: true,
-    autoTour: true,           // director tour on by default
-    gameOver: false,          // check for queen death / extinction
-  },
-  survival: {
-    label: 'Survival', badge: 'SURVIVAL',
-    lifespanMult: 1, noStarvation: false, queenHealthFloor: 0, freeEggs: false,
-    digSpeed: 3, floors: null, stress: true, foodSpawnTicks: null,
-    foodScalesWithColony: false, dewScalesWithColony: false, autoTour: false, gameOver: true,
-  },
-};
-
-export const rules = () => MODES[GameState.mode] || MODES.screensaver;
-```
-
-**Replace every mode check** (grep `GameState.mode` and `screensaver` to confirm the list):
-
-| Where | Today | Becomes |
-|---|---|---|
-| `ants.js` `randLifespan` | `=== 'screensaver' ? 1.5 : 1` | `rules().lifespanMult` |
-| `ants.js` `update` (`this._screensaver`) and the starvation check | `!this._screensaver && …` | `!rules().noStarvation && …` (remove `_screensaver`, also its init in the constructor) |
-| `queen.js` `update` | `floor = screensaver ? 5 : 0` | `rules().queenHealthFloor` |
-| `queen.js` `update` | `meanLife … (screensaver ? 1.5 : 1)` | `rules().lifespanMult` |
-| `queen.js` `update` | `if (!screensaver) rate *= …` and `fed = screensaver \|\| …` | `rules().freeEggs` |
-| `sky.js` `_dawn` | `GameState.mode === 'screensaver' && antSystem` | `rules().dewScalesWithColony && antSystem` |
-| `world.js` `update` | `CONFIG.DIG_TICKS * (screensaver ? 1.5 : 3)` | `CONFIG.DIG_TICKS * rules().digSpeed` |
-| `world.js` `update` | `if (screensaver) { floors; stress = 0; return; }` | use `rules().floors` (if not null) and `rules().stress` |
-| `world.js` `_tickFoodSpawn` | `screensaver ? 420 : …` and the colony-scaled cap | `rules().foodSpawnTicks ?? CONFIG.FOOD_RESPAWN_INTERVAL * 2`, `rules().foodScalesWithColony` |
-| `hud.js` constructor | `mode === 'screensaver'` default for auto tour | `rules().autoTour` |
-| `dashboard.js` | `survival ? 'SURVIVAL' : 'SCREENSAVER'` | `rules().badge`; keep the `survival` CSS class when `GameState.mode === 'survival'` → better: add `cls` field to MODES |
-| `main.js` `showConfirm` | label ternary | `MODES[mode].label` |
-| `main.js` `pickMode` | `['screensaver', 'survival']` | `Object.keys(MODES)` (buttons that don't exist in the HTML are skipped: guard with `?.`) |
-| `main.js` render callback | `GameState.mode === 'survival' && …` | `rules().gameOver && …` |
-
-Also update the comment in `src/gameState.js` and the smoke test's MODES list to read
-`Object.keys(MODES)` if convenient.
-
-**Done when:** `grep -rn "=== 'screensaver'\|=== 'survival'" src` finds nothing outside
-`modes.js` (one CSS-class check is fine), `npm test` passes, and a 5-day soak (T0.6, or
-manual at 8× speed) of each mode behaves as before: screensaver food never < 200, survival
-can starve.
+As built:
+- `src/modes.js` holds `MODES` (one row per mode) and `rules()`, which returns the row for
+  `GameState.mode`. Mode behaviour is now a field read — `rules().noStarvation`, `.floors`,
+  `.autoTour` — in `ants.js`, `queen.js`, `sky.js`, `world.js`, `hud.js`, `dashboard.js` and
+  `main.js`. **Don't add `GameState.mode === '…'` checks; add a field.**
+- Two fields beyond the plan: `cls` (the dashboard badge's CSS class) and `intro` (the Colony
+  Log line `main.js` writes at start; only Survival has one).
+- `label` and `badge` still say "Screensaver" / "SCREENSAVER": the rename to Zen is T1.6.
+- `tests/smoke.mjs` runs every key of `MODES`, so a new mode is tested by adding its row.
+- To check a rule really comes from the table: hold both stores at 0 with every ant at max
+  hunger for 1,000 ticks. Survival loses every ant to starvation; Zen loses none; Zen with
+  `floors: null` still loses none (`noStarvation` alone); flip that off too and they starve.
+  Patch the live table from the page with `(await import('/src/modes.js')).MODES`.
 
 ---
 

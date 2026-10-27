@@ -13,6 +13,7 @@ import { Dashboard } from './ui/dashboard.js';
 import { Controls } from './ui/controls.js';
 import { Hud } from './ui/hud.js';
 import { GameState } from './gameState.js';
+import { MODES, rules } from './modes.js';
 import { CONFIG } from './config.js';
 import { logEvent } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
@@ -67,9 +68,8 @@ function updateSaveStatus(msg) {
 
 function showConfirm(mode, resolve) {
   const info = getSaveInfo(mode);
-  const label = mode === 'survival' ? 'Survival' : 'Screensaver';
   document.getElementById('ms-resume-info').textContent =
-    `${label} · Day ${info.day} · Peak population ${info.peakPopulation}`;
+    `${MODES[mode].label} · Day ${info.day} · Peak population ${info.peakPopulation}`;
 
   document.getElementById('ms-pick').classList.add('hidden');
   document.getElementById('ms-confirm').classList.remove('hidden');
@@ -88,7 +88,7 @@ function showConfirm(mode, resolve) {
 function pickMode() {
   return new Promise(resolve => {
     const wanted = params.get('mode');
-    if (['screensaver', 'survival'].includes(wanted)) {
+    if (Object.keys(MODES).includes(wanted)) {
       GameState.mode = wanted;
       if (DEBUG && params.has('new')) deleteSave(wanted);
       document.getElementById('mode-select').classList.add('hidden');
@@ -96,8 +96,8 @@ function pickMode() {
       return;
     }
 
-    ['screensaver', 'survival'].forEach(mode => {
-      document.getElementById(`btn-mode-${mode}`).addEventListener('click', () => {
+    Object.keys(MODES).forEach(mode => {
+      document.getElementById(`btn-mode-${mode}`)?.addEventListener('click', () => {
         GameState.mode = mode;
         if (hasSave(mode) && getSaveInfo(mode)) {
           showConfirm(mode, resolve);
@@ -167,7 +167,7 @@ const gameLoop = new GameLoop(
     renderer.render(camera, sim, alpha, frameMs, gameLoop.speed);
     if (hud.panelShown && (frame++ & 3) === 0) dashboard.update(stats, world, antSystem);
 
-    if (GameState.mode === 'survival' && !GameState.over) {
+    if (rules().gameOver && !GameState.over) {
       if (queen.health <= 0) triggerGameOver('The queen has perished.');
       else if (antSystem.population === 0 && antSystem.eggCount === 0)
         triggerGameOver('The last ant is gone.');
@@ -192,7 +192,7 @@ document.getElementById('btn-save')?.addEventListener('click', () => {
 
 if (!DEBUG) new Tutorial().show(GameState.mode);
 
-if (GameState.mode === 'survival') logEvent('Survival — keep the queen alive');
+if (rules().intro) logEvent(rules().intro);
 
 // Auto-save every 60 s
 setInterval(() => {

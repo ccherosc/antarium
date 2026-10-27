@@ -28,7 +28,7 @@ Needs M0 (`rules()`, settings, save extras, event bus). Nice to have first: T1.4
    thrives." Style in `main.css` (a green accent, like Survival has its own).
 3. `src/ui/tutorial.js` — a Keeper tutorial (4 short pages: feeding, decorating, unlocks,
    camera keys). Follow how `show(mode)` picks the pages today.
-4. `tests/smoke.mjs` — add `'keeper'` to MODES.
+4. `tests/smoke.mjs` — nothing to do: it runs every key of `MODES`, so the row from step 1 is tested.
 5. Dashboard badge colour for `.keeper`.
 
 **Done when:** Keeper can be started, saved, resumed; `npm test` passes for 3 modes.

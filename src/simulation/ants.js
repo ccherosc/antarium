@@ -1,6 +1,6 @@
 import { TILE, ROLE, STATE, CARRY, ROOM, CONFIG } from '../config.js';
 import { logEvent } from '../events.js';
-import { GameState } from '../gameState.js';
+import { rules } from '../modes.js';
 import { Nav, FAR } from './nav.js';
 
 let nextId = 1;
@@ -35,8 +35,7 @@ const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 
 function randLifespan(role) {
   const base = rand(CONFIG.ANT_LIFESPAN_MIN, CONFIG.ANT_LIFESPAN_MAX);
-  const mode = GameState.mode === 'screensaver' ? 1.5 : 1;
-  return Math.floor(base * mode * (role === ROLE.ROGUE ? 2.5 : 1));
+  return Math.floor(base * rules().lifespanMult * (role === ROLE.ROGUE ? 2.5 : 1));
 }
 
 export function makeAnt(role, x, y) {
@@ -104,7 +103,6 @@ export class AntSystem {
     this._faceSeen = false;
     this._queen = null;
     this._creatures = null;
-    this._screensaver = true;
     this._spawn();
     this._census();
   }
@@ -162,7 +160,6 @@ export class AntSystem {
     const w = this.world;
     this._queen = queen;
     this._creatures = opts.creatures || null; // creature system ref for DEFENDING/FEASTING
-    this._screensaver = GameState.mode === 'screensaver';
 
     // who is digging where: last tick's tally is what newcomers go by
     const crew = w.digCrewPrev;
@@ -194,6 +191,7 @@ export class AntSystem {
     // ── Update + age + kill ants ─────────────────────────────────────────────
     const ants = this.ants;
     const hungerRate = CONFIG.ANT_HUNGER_RATE * (1 + w.stress * 0.4);
+    const noStarvation = rules().noStarvation;
     for (let k = ants.length - 1; k >= 0; k--) {
       const ant = ants[k];
       ant.px = ant.x;
@@ -212,7 +210,7 @@ export class AntSystem {
       if (ant.hunger > 70 && w.foodStore > 0) this._eat(ant);
       if (ant.hunger >= 100) {
         ant.hunger = 100;
-        if (!this._screensaver && ++ant.starvationTicks > CONFIG.ANT_STARVATION_TICKS) {
+        if (!noStarvation && ++ant.starvationTicks > CONFIG.ANT_STARVATION_TICKS) {
           this._kill(k, 'starved');
           continue;
         }

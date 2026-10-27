@@ -7,9 +7,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { serve } from '../tools/serve.mjs';
+import { MODES as MODE_TABLE } from '../src/modes.js';
 
 const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'out');
-const MODES = ['screensaver', 'survival'];   // add 'keeper' when T4.1 lands
+const MODES = Object.keys(MODE_TABLE);   // every mode in src/modes.js is tested
 const MIN_TICKS = 3000;    // sim ticks (16 ms each) that must have run...
 const MIN_SECONDS = 10;    // ...and at least this much real time, so camera/director code runs too
 const MAX_SECONDS = 90;    // stop waiting after this long

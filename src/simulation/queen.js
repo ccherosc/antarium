@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { GameState } from '../gameState.js';
+import { rules } from '../modes.js';
 
 // The colony the nest has room for. Every tile the diggers hollow out makes space
 // for more ants, so the population keeps climbing for as long as the nest grows.
@@ -27,7 +27,7 @@ export class Queen {
   }
 
   update(world, antSystem) {
-    const screensaver = GameState.mode === 'screensaver';
+    const mode = rules();
 
     // Animate slowly
     this.animTimer++;
@@ -52,8 +52,7 @@ export class Queen {
     const targetHealth = foodFactor * 0.7 + waterFactor * 0.3;
     this.health += (targetHealth * 100 - this.health) * 0.001;
     if (this.hunger >= 100) this.health -= 0.012;   // starving outright
-    const floor = screensaver ? 5 : 0;
-    this.health = Math.max(floor, Math.min(100, this.health));
+    this.health = Math.max(mode.queenHealthFloor, Math.min(100, this.health));
 
     // ── Egg laying ──────────────────────────────────────────────────────────
     // She lays just fast enough to replace the ants that die of old age, and a good
@@ -62,14 +61,14 @@ export class Queen {
     const f = 500 / CONFIG.QUEEN_EGG_INTERVAL;                 // the Birth Rate slider
     const want = Math.min(CONFIG.POP_MAX, colonyTarget(world) * (0.75 + 0.25 * f));
     const deficit = Math.max(0, 1 - (antSystem.population + antSystem.eggCount) / want);
-    const meanLife = (CONFIG.ANT_LIFESPAN_MIN + CONFIG.ANT_LIFESPAN_MAX) / 2 * (screensaver ? 1.5 : 1);
+    const meanLife = (CONFIG.ANT_LIFESPAN_MIN + CONFIG.ANT_LIFESPAN_MAX) / 2 * mode.lifespanMult;
     let rate = want / meanLife * (1 + 3.2 * deficit * f);
-    if (!screensaver) rate *= birthFactor * Math.min(1, world.foodStore / 300);
+    if (!mode.freeEggs) rate *= birthFactor * Math.min(1, world.foodStore / 300);
 
     if (--this.eggTimer <= 0) {
       this.eggTimer = Math.max(45, Math.min(2500, 1 / rate)) * (0.7 + Math.random() * 0.6);
       const room = antSystem.eggCount < Math.max(16, Math.min(150, want * 0.3));
-      const fed = screensaver || world.foodStore > CONFIG.EGG_FOOD_COST + 40;
+      const fed = mode.freeEggs || world.foodStore > CONFIG.EGG_FOOD_COST + 40;
       if (birthFactor > 0.3 && room && fed) this._lay(world, antSystem);
     }
 

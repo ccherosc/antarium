@@ -67,7 +67,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 ### M0 — Foundations (make the codebase safe for small models) → `M0-foundations.md`
 - [x] T0.1 [H] Rewrite `claude.md` for this project
 - [x] T0.2 [H] Debug hook, URL params, `package.json`, local server, smoke test
-- [ ] T0.3 [S] Mode rules table (`src/modes.js`) replacing scattered mode checks
+- [x] T0.3 [S] Mode rules table (`src/modes.js`) replacing scattered mode checks
 - [ ] T0.4 [H] Settings store (`src/settings.js`)
 - [ ] T0.5 [S] Save migrations + per-mode extra state
 - [ ] T0.6 [S] Soak test (100 in-game days, headless)
