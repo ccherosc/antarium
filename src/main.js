@@ -15,6 +15,7 @@ import { Hud } from './ui/hud.js';
 import { GameState } from './gameState.js';
 import { MODES, rules } from './modes.js';
 import { CONFIG } from './config.js';
+import { settings } from './settings.js';
 import { logEvent } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
 import { Tutorial } from './ui/tutorial.js';
@@ -182,7 +183,7 @@ hud = new Hud({ camera, director, gameLoop, renderer, controls, sim });
 let frame = 0;
 
 // Test/debug hook: tests/*.mjs drive the game through this (see claude.md)
-if (DEBUG) window.__pa = { sim, gameLoop, camera, director, hud, GameState, CONFIG };
+if (DEBUG) window.__pa = { sim, gameLoop, camera, director, hud, GameState, CONFIG, settings };
 
 // Manual save
 document.getElementById('btn-save')?.addEventListener('click', () => {

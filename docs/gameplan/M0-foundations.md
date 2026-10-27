@@ -50,46 +50,23 @@ As built:
 
 ---
 
-## T0.4 [H] Settings store (`src/settings.js`)
+## T0.4 [H] Settings store (`src/settings.js`) — DONE
 
-**Why:** settings menu (T1.4), sound, themes, clock and frame cap all need one persisted
-place. Leave the existing HUD prefs (`PREFS_KEY` in `hud.js`) and tutorial flag alone.
-
-**Create `src/settings.js`:**
-```js
-const KEY = 'pixelants_settings';
-const DEFAULTS = {
-  volume: 0.6,          // 0..1 master
-  muted: false,
-  fpsCap: 60,           // 30 | 60 | 0 (unlimited)
-  quality: 'high',      // 'high' | 'low'
-  theme: 'classic',
-  showClock: false,
-  clock24h: false,
-  reducedMotion: false,
-  textScale: 1,         // 1 | 1.25 | 1.5
-};
-let data = { ...DEFAULTS };
-try { Object.assign(data, JSON.parse(localStorage.getItem(KEY)) || {}); } catch { /* private window */ }
-const subs = [];
-
-export const settings = {
-  get: k => data[k],
-  set(k, v) {
-    if (data[k] === v) return;
-    data[k] = v;
-    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* full or private */ }
-    for (const fn of subs) fn(k, v);
-  },
-  onChange: fn => { subs.push(fn); },
-  defaults: DEFAULTS,
-};
-```
-Also: if `window.matchMedia('(prefers-reduced-motion: reduce)').matches` and the user
-never set `reducedMotion`, default it to `true`.
-
-**Done when:** in the console, `settings.set('volume', 0.2)` survives a reload. `npm test`
-passes.
+As built:
+- `settings.get(key)`, `settings.set(key, value)`, `settings.onChange((key, value) => …)` and
+  `settings.defaults`, saved under `pixelants_settings`. `?debug` exposes it as `__pa.settings`.
+  Nothing reads it yet: T1.4 (menu), sound, themes, the clock and the frame cap are the consumers.
+  `hud.js` prefs and the tutorial flag are untouched.
+- Stricter than the sketch: a value is accepted only for a known key and the type of its
+  default (finite, for numbers). Loading from storage and `set()` use the same rule, so
+  hand-edited or corrupt storage can't leak in and `set()` can't take a value that the next
+  load would drop.
+- Only what the player chose is written back, so the reduced-motion default (true when the OS
+  asks for less motion) is never frozen into storage by an unrelated change. Choosing the value
+  the OS already implies counts as a choice and is kept; it fires no change event.
+- `npm test` has a `settings` check (defaults, events, rejected input, reload, corrupt
+  storage, the reduced-motion rules in a second browser context). Break `settings.js` and it
+  fails; it was mutation-tested.
 
 ---
 

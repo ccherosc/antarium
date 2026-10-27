@@ -18,15 +18,18 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   as Playwright, and the `desktop/` Electron wrapper) are allowed but the game must never
   import them.
 * Tunable numbers go in `src/config.js` (`CONFIG`), not inline.
-* Mode-specific behaviour goes through `rules()` from `src/modes.js` (once ticket T0.3 is
-  done) — never add new `GameState.mode === '...'` checks.
+* Mode-specific behaviour goes through `rules()` from `src/modes.js` — never add new
+  `GameState.mode === '...'` checks; add a field to the mode's row instead.
+* Player options (volume, frame cap, theme, …) live in `src/settings.js`: read with
+  `settings.get(key)`, react with `settings.onChange`. Add a new option to its `DEFAULTS`
+  rather than adding another localStorage key.
 * If you change what a save contains, follow the save rules in `src/saveLoad.js` (bump
   VERSION and add a migration) so existing colonies still load.
 * Preserve the playable game. After every change:
   1. `npm test` (smoke test: every mode loads, runs, throws no errors)
   2. Look at the screenshots it writes to `tests/out/` to check visuals.
 * `npm run serve` starts a local server. Add `?debug` to the URL to get `window.__pa`
-  (`sim`, `gameLoop`, `camera`, `director`, `hud`, `GameState`, `CONFIG`) and skip the
+  (`sim`, `gameLoop`, `camera`, `director`, `hud`, `GameState`, `CONFIG`, `settings`) and skip the
   tutorial; `?debug&new&mode=<mode>` also skips the menu and starts a fresh colony.
 * Pushing to `master` publishes to the live site. Work on a branch per ticket; merge to
   `master` only when the user asks.
