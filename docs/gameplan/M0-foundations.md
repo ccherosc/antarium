@@ -10,106 +10,25 @@ Do these in order.
 
 ---
 
-## T0.2 [H] Debug hook, URL params, `package.json`, local server, smoke test
+## T0.2 [H] Debug hook, URL params, `package.json`, local server, smoke test — DONE
 
-**Why:** every later ticket ends with "run `npm test`". This ticket creates it.
-
-**Files:** `src/main.js`, `package.json` (new), `tools/serve.mjs` (new),
-`tests/smoke.mjs` (new), `.gitignore`, `netlify.toml` (new).
-
-**Steps**
-1. `src/main.js` — URL parameters, read once near the top:
-   ```js
-   const params = new URLSearchParams(location.search);
-   const DEBUG = params.has('debug');
-   ```
-   In `pickMode()`, before wiring the buttons: if `params.get('mode')` is one of
-   `['screensaver', 'survival']`, set `GameState.mode`, hide `#mode-select`, and resolve
-   immediately — `resolve(false)` after `deleteSave(mode)` if `params.has('new')`,
-   otherwise `resolve(hasSave(mode))`.
-2. `src/main.js` — after `hud = new Hud(...)`:
-   ```js
-   if (DEBUG) window.__pa = { sim, gameLoop, camera, director, hud, GameState, CONFIG };
-   ```
-   (add `import { CONFIG } from './config.js';` at the top of `main.js`)
-   and don't show the tutorial when `DEBUG` (wrap `new Tutorial().show(...)`).
-3. `tools/serve.mjs` — zero-dependency static server:
-   ```js
-   // node tools/serve.mjs [port] — serves the repo root on 127.0.0.1
-   import http from 'node:http';
-   import fs from 'node:fs';
-   import path from 'node:path';
-   import { fileURLToPath } from 'node:url';
-
-   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-   const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
-     '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml',
-     '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.woff2': 'font/woff2' };
-
-   export function serve(port = 8080) {
-     const server = http.createServer((req, res) => {
-       let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-       if (p.endsWith('/')) p += 'index.html';
-       const file = path.join(root, p);
-       if (!file.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
-       fs.readFile(file, (err, data) => {
-         if (err) { res.writeHead(404); res.end('Not found'); return; }
-         res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
-                              'Cache-Control': 'no-store' });
-         res.end(data);
-       });
-     });
-     return new Promise(r => server.listen(port, '127.0.0.1', () => r(server)));
-   }
-
-   if (process.argv[1] === fileURLToPath(import.meta.url)) {
-     const port = +(process.argv[2] || 8080);
-     serve(port).then(() => console.log(`Pixel Ants: http://localhost:${port}/`));
-   }
-   ```
-4. `package.json`:
-   ```json
-   {
-     "name": "pixel-ants",
-     "private": true,
-     "type": "module",
-     "scripts": {
-       "serve": "node tools/serve.mjs",
-       "test": "node tests/smoke.mjs",
-       "soak": "node tests/soak.mjs"
-     },
-     "devDependencies": { "playwright": "1.60.0" }
-   }
-   ```
-   If Chromium is missing, run `npx playwright install chromium` once.
-5. `netlify.toml` — stops Netlify trying to "build" now that a `package.json` exists:
-   ```toml
-   [build]
-     publish = "."
-     command = "echo static site"
-   [build.environment]
-     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
-   ```
-   After merging this ticket, check the Netlify deploy log once: it should install
-   quickly and publish without a build step.
-6. `tests/smoke.mjs`:
-   - `const MODES = ['screensaver', 'survival'];` (add `'keeper'` when T4.1 lands).
-   - Start `serve(8181)` from `tools/serve.mjs`; launch Chromium (viewport 1600×900).
-   - For each mode: new page; collect `pageerror` and console `error` messages;
-     `goto('http://127.0.0.1:8181/?debug&new&mode=' + mode)`;
-     `waitForFunction(() => window.__pa)`; `evaluate(() => __pa.gameLoop.setSpeed(8))`;
-     wait 15 s; then check:
-     - no errors collected
-     - `__pa.sim.world.tick > 3000`
-     - `__pa.sim.antSystem.population > 0`
-     - every ant has finite `x` and `y` (`__pa.sim.antSystem.ants.every(a => Number.isFinite(a.x) && Number.isFinite(a.y))`)
-   - Screenshot to `tests/out/<mode>.png`.
-   - Print one line per mode: `PASS screensaver  tick=… pop=…` or `FAIL … <reason>`.
-   - Close everything; `process.exit(anyFailed ? 1 : 0)`.
-7. `.gitignore` — add `tests/out/`, `dist/`, `desktop/node_modules/`, `desktop/out/`.
-
-**Done when:** `npm test` prints PASS for both modes and writes two screenshots that show
-a running farm. Normal play (no URL params) still shows the mode menu and tutorial.
+As built (the code is the spec now — read it, don't re-derive it):
+- `src/main.js`: `?debug` exposes `window.__pa = { sim, gameLoop, camera, director, hud,
+  GameState, CONFIG }` and skips the tutorial. `?mode=<name>` skips the menu (and resumes
+  that mode's save). `?new` wipes the save first **only together with `?debug`**, so a stray
+  link can never delete a player's colony. Test URL: `/?debug&new&mode=screensaver`.
+- `tools/serve.mjs` (`npm run serve [port]`): static server on 127.0.0.1. `serve(0)` picks a
+  free port (the tests use it); from the command line a busy port moves on to the next one.
+- `tests/smoke.mjs` (`npm test`, ~30 s): the normal menu → tutorial boot, then each mode at 8×
+  until at least 3,000 ticks and 10 s have passed. Fails on any page error, console error or
+  failed request, no ants alive, a non-finite ant position, or a blank canvas. Screenshots go
+  to `tests/out/` — look at them. Add `'keeper'` to `MODES` in the file when T4.1 lands.
+- `package.json` (scripts `serve`, `test`, `soak`; devDependency Playwright 1.60.0) and
+  `package-lock.json`. If Chromium is missing: `npx playwright install chromium`.
+- `netlify.toml`: no build step, and `NPM_FLAGS = "--omit=dev"` so Netlify doesn't install
+  Playwright. **After the first merge to `master`, check the Netlify deploy log**: install
+  should be near-instant and the site should publish unchanged.
+- `.gitignore`: `tests/out/`, `dist/`, `desktop/node_modules/`, `desktop/out/`.
 
 ---
 

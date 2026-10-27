@@ -4,3 +4,7 @@ node_modules/
 !icon-512.png
 !og-image.png
 *.pdf
+tests/out/
+dist/
+desktop/node_modules/
+desktop/out/

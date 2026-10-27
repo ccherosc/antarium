@@ -13,9 +13,17 @@ import { Dashboard } from './ui/dashboard.js';
 import { Controls } from './ui/controls.js';
 import { Hud } from './ui/hud.js';
 import { GameState } from './gameState.js';
+import { CONFIG } from './config.js';
 import { logEvent } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
 import { Tutorial } from './ui/tutorial.js';
+
+// URL parameters, read once.
+//   ?debug         expose window.__pa for tests and skip the tutorial
+//   ?mode=<name>   skip the menu and go straight into that mode (resumes its save)
+//   ?new           with ?debug only: wipe that mode's save first (a stray link must never delete a colony)
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has('debug');
 
 const canvas = document.getElementById('gameCanvas');
 
@@ -79,6 +87,15 @@ function showConfirm(mode, resolve) {
 
 function pickMode() {
   return new Promise(resolve => {
+    const wanted = params.get('mode');
+    if (['screensaver', 'survival'].includes(wanted)) {
+      GameState.mode = wanted;
+      if (DEBUG && params.has('new')) deleteSave(wanted);
+      document.getElementById('mode-select').classList.add('hidden');
+      resolve(hasSave(wanted));
+      return;
+    }
+
     ['screensaver', 'survival'].forEach(mode => {
       document.getElementById(`btn-mode-${mode}`).addEventListener('click', () => {
         GameState.mode = mode;
@@ -164,13 +181,16 @@ const director = new Director(camera, sim);
 hud = new Hud({ camera, director, gameLoop, renderer, controls, sim });
 let frame = 0;
 
+// Test/debug hook: tests/*.mjs drive the game through this (see claude.md)
+if (DEBUG) window.__pa = { sim, gameLoop, camera, director, hud, GameState, CONFIG };
+
 // Manual save
 document.getElementById('btn-save')?.addEventListener('click', () => {
   const ok = doSave();
   updateSaveStatus(ok ? `Saved — Day ${stats.day}` : 'Save failed');
 });
 
-new Tutorial().show(GameState.mode);
+if (!DEBUG) new Tutorial().show(GameState.mode);
 
 if (GameState.mode === 'survival') logEvent('Survival — keep the queen alive');
 

@@ -1,0 +1,9 @@
+# The game is plain static files: nothing to build. package.json exists only for dev tools
+# (Playwright tests), so keep Netlify from downloading them or running a build.
+[build]
+  publish = "."
+  command = "echo static site"
+
+[build.environment]
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
+  NPM_FLAGS = "--omit=dev"
