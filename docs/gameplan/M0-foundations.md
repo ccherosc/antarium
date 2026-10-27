@@ -108,27 +108,45 @@ As built (`src/saveLoad.js`; the comment at its top is the rule to follow):
 
 ---
 
-## T0.6 [S] Soak test (`tests/soak.mjs`)
+## T0.6 [S] Soak test (`tests/soak.mjs`) — DONE
 
-**Why:** the 8-hour stability bar can't be checked by eye.
-
-`npm run soak -- --mode screensaver --days 30`
-
-- Serve + launch like the smoke test with `?debug&new&mode=…`.
-- In the page: `__pa.gameLoop.stop()`, then run whole in-game days synchronously:
-  `for (let i = 0; i < __pa.CONFIG.DAY_TICKS; i++) __pa.gameLoop.onUpdate(16)`.
-  Run one day per `evaluate` call so the page stays responsive.
-- After each day record: day, population, capacity, eggs, foodStore, waterStore, queen
-  health, ants with non-finite x/y, `performance.memory.usedJSHeapSize` (MB), ms per tick
-  for that day, save size (`JSON.stringify` of what `saveGame` would write — T0.5 already
-  exports `buildSave(sim)` from `saveLoad.js`; in the page: `await import('/src/saveLoad.js')`).
-- Write `tests/out/soak-<mode>.csv`; print a compact table.
-- Fail (exit 1) on: any page error; any non-finite ant; Zen population hitting 0; heap at
-  the last day > 1.5× heap at day 5; ms/tick at the last day > 2× day 5 at similar
-  population; save size > 3 MB.
-
-**Done when:** a 30-day Zen soak and a 10-day Survival soak finish and print the table.
-(Expect ~20–60 s per in-game day once the colony is big.)
+As built (`npm run soak -- --mode screensaver --days 30`; `--mode` is any key of `MODES`, `--days`
+a whole number; anything else prints the usage and exits 2):
+- It serves the game, opens `?debug&new&mode=<mode>`, stops the game loop and lives whole days
+  back to back, calling `gameLoop.onUpdate` `CONFIG.DAY_TICKS` times per `evaluate` call. That is
+  the simulation only: the renderer, director and HUD don't run, so a leak in them isn't caught.
+  It takes about a second per in-game day, not the 20–60 s the plan guessed.
+- Each day prints a row and rewrites `tests/out/soak-<mode>.csv`: `d` (days lived), `day` (the
+  game's own counter, one ahead because a colony starts in the morning), population, capacity,
+  eggs, food, water, queen health, ants with a non-finite position, heap (MB, after a forced
+  `gc()`), ms per tick that day, and the size of the save `buildSave` would write.
+- Fails (exit 1) on a page error, console error or failed request; an ant with a non-finite
+  position; a save over 3 MB; a colony that has ended (the game's own test from `main.js`: queen
+  dead, or no ants and no eggs) in a mode whose `gameOver` is false; and heap or ms/tick that has
+  grown too much (next point). In a mode that can end (Survival) the colony ending stops the soak
+  and passes. A non-finite ant, an ended colony or an oversize save stops the run at once, as
+  more days can't undo it.
+- **Deviation: heap and ms/tick are compared with the earliest day from day 5 on whose population
+  is within 25% of the last day's, not with day 5.** A Zen colony is still growing until about day
+  20 (100 ants on day 1, ~665 at capacity, ~16 KB of heap per ant), and "heap at the last day >
+  1.5x heap at day 5" failed a healthy 30-day run at 1.6x. The limits are the plan's (1.5x heap,
+  2x ms/tick); if no day qualifies the checks are skipped and the output says so. **Blind spot:**
+  in a run too short for the colony to level off (under about 20 days in Zen) a leak and growth
+  look the same, so there the table is the only evidence; use 30 days or more for a verdict.
+- Results on the final script, all PASS: Zen 30 days (day 30 against day 14: heap 15.1 -> 17.1 MB,
+  0.108 -> 0.070 ms/tick, population 516 -> 665), Survival 10 days (day 10 against day 6: heap
+  10.5 -> 11.5 MB, 0.067 -> 0.060 ms/tick), Zen 100 days (day 100 against day 13: heap 14.8 ->
+  18.0 MB, 0.097 -> 0.055 ms/tick). Zen levels off at about 665 ants, 17-18 MB, 0.06 ms/tick and a
+  135 KB save, flat from day 20 to day 100.
+- Mutation-tested by injecting each fault at the end of the sim step (or into `buildSave`): an
+  exception, a `console.error`, a NaN ant, the queen dying in Zen, every ant and egg gone in Zen,
+  a leak of about 1.5 MB a day and ticks that slow down from day 15 (both over `--days 30`), and a
+  4 MB save all fail the soak with the right message; the queen dying or the colony emptying in
+  Survival stops it cleanly and passes. The same leak and slowdown over 10-12 days are not caught
+  (the blind spot above).
+- Seen while soaking, not fixed: from about day 28 the Zen food store often sits at its floor of
+  200 (`floors` in the Zen row, which tops the store up for free), so a full-size colony eats
+  about as fast as its foragers bring food in. Worth a look if Zen is ever tuned.
 
 ---
 
