@@ -108,27 +108,131 @@ passed.
 
 ---
 
-## T1.2 [S] Frame cap, power saving
+## T1.2 [S] Frame cap, power saving — DONE
 
-**Files:** `src/app/gameLoop.js`, `src/main.js`, `src/rendering/renderer.js`.
+As built (`src/app/gameLoop.js`, `src/main.js`, `src/rendering/renderer.js`; also `src/settings.js`,
+`src/modes.js`, `src/config.js`, `styles/main.css`, the new `src/ui/perfReadout.js` and `tests/perf.mjs`):
+- **Frame cap.** `GameLoop.fpsCap` (0 = every frame the screen offers) follows `settings.get('fpsCap')` and
+  `settings.onChange`, so a pick applies on the next frame. `_tick` still advances the sim on every frame and
+  asks `_frameDue(now)` before it calls `onRender`. `onRender`'s second argument, `frameMs`, is the time
+  since the last frame *drawn* (100 ms at most), not since the last tick, so what runs on real time (the
+  camera, the sway of the grass) keeps its pace at 30 fps.
+- **Defaults.** Zen draws at 30 until the player picks a cap, Survival at 60: `fpsCap` is a new field in each
+  row of `src/modes.js`, and `main.js` offers it with a new `settings.setDefault(key, value)`. That sets the
+  value without storing it, never replaces a value the player chose, ignores a value `DEFAULTS` doesn't
+  allow, and calls the `onChange` listeners only if the value changed. A pick is stored by `set()` as
+  before, even one equal to the default, so it survives a later change of default.
+- **Low quality** (`settings.get('quality') === 'low'`; the setting has existed since T0.4): the canvas holds
+  `CONFIG.LOW_QUALITY_SCALE` (0.5) of the window's pixels each way (800x450 in a 1600x900 window), is shown
+  at the size of the window, and the browser stretches it up. The camera, the HUD and the mouse still work in
+  window pixels: `fitWindow()` in `main.js` (at start, on `resize`, and when `quality` changes) gives them the
+  window's size and `Renderer.resize(w, h, scale)` the scale. The renderer lays the farm out in window pixels
+  (`renderer.w`, `renderer.h`) and starts every frame with
+  `ctx.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0)`. Assigning `canvas.width` resets the
+  context, so the transform can't be set once, and low quality can be switched while the game runs.
+- **Hidden tab.** `visibilitychange` runs `autoSave()` when the page becomes hidden: the 60 s timer's own
+  function, now named, which skips a colony that is over (its save was deleted with it and must not come
+  back). The README's "pause when hidden" is the browser's doing: it stops calling `requestAnimationFrame`
+  for a hidden tab, and the first frame back is told 100 ms at most, so the colony does not catch up in a burst.
+- **Read-out.** `?debug` shows `PerfReadout` (`src/ui/perfReadout.js`) at the top left, refreshed every half
+  second: `30 fps · 0.8 ms/frame (worst 2.1) · cap 30 · high`. ms/frame is the game's own time in `onRender`;
+  the browser rasterises the frame after that, so it is in the CPU numbers below and not in this one.
+  `renderer` joined `window.__pa`.
+- **`npm run perf`** (`tests/perf.mjs`, about two minutes) measures the processor time the browser uses at each
+  cap and quality; see the numbers below.
 
-1. **Frame cap** from `settings.get('fpsCap')` (30 / 60 / 0 = unlimited). In
-   `GameLoop._tick`, still advance the sim every frame, but only call `onRender` when at
-   least `1000 / cap - 1` ms have passed since the last render. Listen to
-   `settings.onChange` so it applies live.
-2. **Zen defaults to 30 fps** the first time (only if the user never chose).
-3. **Low quality** (`settings.get('quality') === 'low'`): render the canvas at half
-   resolution — set `canvas.width/height` to half the window size, keep CSS size at 100%,
-   and make sure `image-rendering: pixelated` is on the canvas in `styles/main.css`.
-   Also skip the costliest effects in `src/rendering/effects.js` (find what costs most by
-   timing `renderer.render` with each effect off).
-4. **Autosave when the tab is hidden**: `document.addEventListener('visibilitychange', …)`
-   in `main.js` → `doSave()` when it becomes hidden.
-5. Measure: add an on-screen FPS / ms-per-frame readout when `?debug` is set.
+Measured with `npm run perf`: a new Zen colony in headless Chromium at 1600x900, each setting for 12 s after 3 s
+of warming up, run A B C D D C B A and averaged so that a colony that grows or a machine that warms up favours
+none; the CPU time of all the browser's processes, read over the DevTools protocol, as a % of one core. Two runs:
 
-**Done when:** at a 30 fps cap, Chrome's Task Manager shows clearly lower CPU for the tab
-than at 60 (write both numbers in the commit message); low quality looks the same pixel
-style, just softer at the edges; `npm test` passes.
+| | frames a second | CPU, run 1 | CPU, run 2 |
+|---|---:|---:|---:|
+| cap 60 | 56-57 | 113% | 113% |
+| cap 30 | 30 | 60% | 63% |
+| cap 60, low quality | 60 | 45% | 51% |
+| cap 30, low quality | 30 | 29% | 27% |
+
+A cap of 30 used 44-47% less processor time than a cap of 60, low quality alone 55-60% less, and both together
+74-76% less. (At a cap of 60 and full quality this machine could not quite keep up: 56-57 frames a second,
+with the CPU doing the drawing.)
+
+Where it departs from the ticket, and why:
+- **The cap is a schedule, not "at least `1000 / cap - 1` ms since the last render".** Counted from the last
+  frame drawn, a cap of 60 gives 48 fps on a 144 Hz screen (the third frame is the first 15.7 ms on) and
+  37.5 on a 75 Hz one. `_frameDue` instead keeps its own schedule, a frame due every `1000 / cap` ms: a
+  refresh up to 1 ms early counts as on time, and one more than a frame late starts the schedule over rather
+  than drawing a burst to catch up. It holds the cap on 30, 60, 75, 120, 144 and 240 Hz screens.
+- **Low quality is the smaller canvas and nothing else; no effect is switched off.** The ticket expects a few
+  costly effects in `src/rendering/effects.js`. Timing `renderer.render` stage by stage (headless Chromium
+  with the CPU rasterising, 1600x900 at zoom 1.25, median of 60 frames), a whole frame took 15 ms, and
+  `effects.js` took 0.2 ms of it, no part of it over 0.1. The cost is in the big fills, which scale with the
+  pixels: the room round the farm 4.2 ms, the vignette 4.2, the farm's frame 3.0, the glows 1.0, then the
+  ants 0.6, the sky 0.5, the world blit 0.5. At half the resolution the same frame took 5 ms (the room 1.1,
+  the vignette 1.1, the frame 0.8; the ants, whose cost doesn't depend on the pixels, 0.6 either way). There
+  was nothing to skip that would save more than the half-size canvas already does. (A browser with a GPU
+  will split the cost differently; the stages were timed once, here.)
+- **`image-rendering`.** The stylesheet listed `pixelated` and then `crisp-edges`, and Chromium takes the last
+  one it understands, so its computed value was `crisp-edges`. They are in the other order now, as the
+  fallback pattern intends, and the test asks the browser for the computed value.
+- **Not Chrome's Task Manager.** The ticket's "Done when" reads the tab's CPU in Task Manager (Shift+Esc),
+  which a script can't. `npm run perf` reads the same per-process CPU time over the DevTools protocol in
+  headless Chromium instead. To see the real thing: open the game with `?debug`, then in the console
+  `__pa.settings.set('fpsCap', 60)` and `__pa.settings.set('fpsCap', 30)` while watching the tab's CPU column.
+
+Things to know:
+- Headless Chromium rasterises with the CPU; a desktop with a GPU shows lower percentages and, since the
+  colony's 62.5 ticks a second run whatever the cap, a smaller saving from a cap. Read the direction and the
+  ratios, not the percentages. Its screen refreshes at 60 Hz, so "no cap" is the same as 60 there (the
+  loop test covers it on a simulated screen).
+- There is no menu for the cap or the quality until T1.4; `__pa.settings.set(...)` with `?debug` is the way.
+- A refresh time stamp that is more than 1 ms ahead of the schedule is waited out, so with jitter of about
+  1.5 ms or more a frame is now and then skipped (a gap of 50 ms at a cap of 30); the rate stays exact.
+  Chromium's stamps are well inside that (the loop held 30.0 and 60.0 fps in the browser), but it has not been
+  tried on other browsers or real screens.
+- The hidden-tab save also fires when a running game is navigated away from, as the page is hidden first. A
+  test that plants a save must therefore leave the game page first: `saves` and `fastforward` now go to
+  `styles/main.css` before they write one.
+- A save that was refused for being from a newer build is overwritten by the first autosave of the colony that
+  replaces it, as it was by the 60 s timer; hiding the tab makes that happen sooner. T1.7 should keep a copy.
+
+Test: a new `performance` check in `tests/smoke.mjs` (about 10 s; `npm test -- performance`), and a
+`setDefault` case in `settings`:
+- The loop on its own, in Node, on a simulated screen (a fake `requestAnimationFrame` and clock, `playLoop`):
+  ten screen and cap pairs from 30 Hz to 240 Hz, and a cap of none, each for ten seconds. The cap must hold to
+  0.3 fps, the sim must run its 625 ticks however few frames are drawn, the `frameMs` values must add up to
+  the time of the last frame drawn, and no gap may be more than one refresh longer than the cap's interval.
+  The same with the time stamps off by up to 0.4 ms. A stall (half a second with no frames) and ten minutes
+  in a hidden tab must not be made up for with a burst of frames or of colony time. The cap can change while
+  the loop runs (60, then 30, then none, on a 120 Hz screen), and a cap of NaN, -30 or nothing means none.
+- In the browser: a new Zen colony draws at 30, the cap is not in storage, and a new Survival colony draws at 60;
+  the game really draws about 30 and about 60 frames a second at those caps and the colony lives 62.5 ticks a
+  second at both; a cap chosen in Survival survives a reload and holds in Zen; the read-out says the right
+  thing, both for the numbers it is given and on the live page; and at low quality the canvas is half the window,
+  shown at the whole window, `pixelated`, with the camera still in window pixels and the farm laid out in window
+  pixels; its picture is the full-size one, softened (1.7 levels of 255 off on average, against a limit of 8;
+  the soil still brown), with every 2x2 block of screen pixels one colour; and window sizes of 1000x600 and
+  1300x800 at both qualities agree between the canvas, the camera and the layout, and the picture reaches
+  every corner of the canvas. A hidden tab saves, one that comes into view does not, and a finished game is
+  not saved back.
+- Screenshots: `perf-readout` and `low-quality` in `tests/out/`.
+
+Checked by breaking things: 46 faults were put, one at a time, into a throwaway copy of the repo: in the loop,
+the 1 ms grace dropped, the cadence counted from the last frame drawn (the ticket's own rule), the cap ignored
+or never unlimited at 0, the schedule not restarted after a stall, `frameMs` unclamped, counted from the last
+tick, or its clock never set or not restarted, and the sim following the drawn frames or slowed by the cap;
+in the renderer and `main.js`, no transform, the CSS size or the scale missing for either side, a stale
+`renderer.w` or `renderer.h`, the quality ignored or its change not applied, no `resize` listener, a scale of
+1, the `image-rendering` order swapped or smoothed; in `settings`, `setDefault` beating a choice, firing for no
+change, accepting any value, storing the default or saying nothing; either mode given the other's cap,
+`main.js` not offering the default, not seeding the loop or not applying a pick; the hidden-tab save missing,
+firing on becoming visible or ignoring game over; and eight faults in the read-out. Every one made
+`npm test -- performance settings` fail with the message written for it; the unbroken copy passed. Four did
+not on the first run. The 1 ms grace was missed: without it a cap of 60 on a 60 Hz screen loses only 0.4 fps,
+inside the 2% tolerance the test then had, which is now 0.3 fps and is tried with jittered time stamps. A stale
+`renderer.w` was missed and a stale `renderer.h` was caught only by accident (the soil came out blue), because
+the transform stretches any layout over the whole canvas, so the picture looks right whatever the layout size;
+the test now asks the renderer for its layout size. The fourth, `setDefault` storing its default, was caught by
+the right check under a message my harness did not expect.
 
 ---
 

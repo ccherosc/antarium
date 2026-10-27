@@ -20,6 +20,7 @@ import { settings } from './settings.js';
 import { logEvent, on } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
 import { Tutorial } from './ui/tutorial.js';
+import { PerfReadout } from './ui/perfReadout.js';
 
 // URL parameters, read once.
 //   ?debug         expose window.__pa (once the colony is ready) for tests and skip the tutorial
@@ -30,22 +31,20 @@ const DEBUG = params.has('debug');
 
 const canvas = document.getElementById('gameCanvas');
 
-function resize() {
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', () => {
-  resize();
-  camera.resize(canvas.width, canvas.height);
-  renderer.resize(canvas.width, canvas.height);
-  hud?.layout();
-});
-
 let hud = null;   // made once the mode is known
 
-const camera    = new Camera(canvas.width, canvas.height);
-const renderer  = new Renderer(canvas);
+// The camera, the HUD and the mouse all work in window pixels. Low quality only gives the canvas
+// fewer pixels than that, and the browser stretches it back up.
+const camera   = new Camera(window.innerWidth, window.innerHeight);
+const renderer = new Renderer(canvas);
+function fitWindow() {
+  camera.resize(window.innerWidth, window.innerHeight);
+  renderer.resize(window.innerWidth, window.innerHeight, settings.get('quality') === 'low' ? CONFIG.LOW_QUALITY_SCALE : 1);
+  hud?.layout();
+}
+fitWindow();
+window.addEventListener('resize', fitWindow);
+
 const dashboard = new Dashboard();
 
 // A colony is only built once the mode is known — it decides how long ants live
@@ -184,6 +183,24 @@ const gameLoop = new GameLoop(
   }
 );
 
+// The frame cap is the mode's own until the player picks one; a pick applies at once
+settings.setDefault('fpsCap', rules().fpsCap);
+gameLoop.fpsCap = settings.get('fpsCap');
+settings.onChange((key, value) => {
+  if (key === 'fpsCap') gameLoop.fpsCap = value;
+  else if (key === 'quality') fitWindow();
+});
+
+if (DEBUG) {
+  const perf = new PerfReadout({ cap: () => gameLoop.fpsCap, quality: () => settings.get('quality') });
+  const drawFrame = gameLoop.onRender;
+  gameLoop.onRender = (alpha, frameMs) => {
+    const t0 = performance.now();
+    drawFrame(alpha, frameMs);
+    perf.frame(performance.now() - t0);
+  };
+}
+
 const controls = new Controls(camera, world, gameLoop, antSystem);
 const input    = new InputHandler(canvas, camera, world, controls);
 const director = new Director(camera, sim);
@@ -267,7 +284,7 @@ if (bootNote) updateSaveStatus(bootNote);
 
 // Test/debug hook: tests/*.mjs drive the game through this (see claude.md). It appears once the
 // colony is ready, so a test that waits for it never races the fast-forward.
-if (DEBUG) window.__pa = { sim, gameLoop, camera, director, hud, GameState, CONFIG, settings, startup };
+if (DEBUG) window.__pa = { sim, gameLoop, camera, renderer, director, hud, GameState, CONFIG, settings, startup };
 
 // Manual save
 document.getElementById('btn-save')?.addEventListener('click', () => {
@@ -279,11 +296,14 @@ if (!DEBUG) new Tutorial().show(GameState.mode);
 
 if (rules().intro) logEvent(rules().intro);
 
-// Auto-save every 60 s
-setInterval(() => {
-  if (!GameState.over) {
-    if (doSave()) updateSaveStatus(`Auto-saved — Day ${stats.day}`);
-  }
-}, 60_000);
+function autoSave() {
+  if (GameState.over) return;   // the save was deleted with the colony; don't bring it back
+  if (doSave()) updateSaveStatus(`Auto-saved — Day ${stats.day}`);
+}
+
+// Auto-save every 60 s, and whenever the tab is hidden: a tab nobody is looking at is the one most
+// likely to be closed, and the browser stops drawing it anyway
+setInterval(autoSave, 60_000);
+document.addEventListener('visibilitychange', () => { if (document.hidden) autoSave(); });
 
 gameLoop.start();

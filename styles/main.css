@@ -37,9 +37,24 @@ body {
   top: 0;
   left: 0;
   cursor: crosshair;
-  image-rendering: pixelated;
   image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
+
+/* ?debug: frames per second and the time a frame takes (src/ui/perfReadout.js) */
+#perf {
+  position: fixed;
+  top: 40px;
+  left: 12px;
+  z-index: 250;
+  padding: 3px 8px;
+  background: rgba(14,10,6,0.72);
+  color: var(--text);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#perf:empty { display: none; }
 
 /* ── Dashboard ── */
 #dashboard {

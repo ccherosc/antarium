@@ -19,6 +19,7 @@ export const MODES = {
     gameOver: false,          // the run ends when the queen dies or the colony is gone
     pregrow: true,            // a new colony is grown into a busy nest before the first frame
     catchUp: true,            // a resumed colony lives on through the time the player was away
+    fpsCap: 30,               // frames per second the farm is drawn at, until the player picks a cap
     intro: null,              // news line shown when the farm starts
   },
   survival: {
@@ -26,7 +27,7 @@ export const MODES = {
     lifespanMult: 1, noStarvation: false, queenHealthFloor: 0, freeEggs: false,
     digSpeed: 3, floors: null, stress: true, foodSpawnTicks: null,
     foodScalesWithColony: false, dewScalesWithColony: false, autoTour: false, gameOver: true,
-    pregrow: false, catchUp: false,
+    pregrow: false, catchUp: false, fpsCap: 60,
     intro: 'Survival — keep the queen alive',
   },
 };

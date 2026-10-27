@@ -5,7 +5,8 @@
   "scripts": {
     "serve": "node tools/serve.mjs",
     "test": "node tests/smoke.mjs",
-    "soak": "node tests/soak.mjs"
+    "soak": "node tests/soak.mjs",
+    "perf": "node tests/perf.mjs"
   },
   "devDependencies": {
     "playwright": "1.60.0"

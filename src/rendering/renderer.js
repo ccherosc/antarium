@@ -24,6 +24,8 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.w = canvas.width;     // the size the farm is laid out in, in window pixels (see resize)
+    this.h = canvas.height;
     this.effects = new Effects();
     this.t = 0;          // seconds of real time, for whatever sways, pulses or twinkles
     this.drift = 0;      // how far the clouds have blown
@@ -40,8 +42,10 @@ export class Renderer {
   render(camera, sim, alpha = 1, frameMs = 16, speed = 1) {
     const { world, sky, antSystem, queen, creatures } = sim;
     const ctx = this.ctx;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = this.w;
+    const h = this.h;
+    // Everything below is laid out in window pixels; this maps them onto the canvas's own
+    ctx.setTransform(this.canvas.width / w, 0, 0, this.canvas.height / h, 0, 0);
 
     const dt = Math.min(0.1, frameMs / 1000);
     this.t += dt;
@@ -378,9 +382,15 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
-  resize(w, h) {
-    this.canvas.width = w;
-    this.canvas.height = h;
+  // w x h is the window, which is what the camera, the HUD and the mouse all work in. The canvas holds
+  // `scale` times as many pixels each way (low quality draws fewer) and is stretched back up to w x h.
+  resize(w, h, scale = 1) {
+    this.w = w;
+    this.h = h;
+    this.canvas.width  = Math.max(1, Math.round(w * scale));
+    this.canvas.height = Math.max(1, Math.round(h * scale));
+    this.canvas.style.width  = `${w}px`;
+    this.canvas.style.height = `${h}px`;
     this._firstFrame = true;
     this._vignette = null;
   }

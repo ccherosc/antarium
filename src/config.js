@@ -142,6 +142,9 @@ export const CONFIG = {
   CATCHUP_MAX_DAYS: 0.5,       // ...and then for at most this many in-game days...
   CATCHUP_BUDGET_MS: 5000,     // ...or this long on the clock
 
+  // ── Power saving — low quality (src/rendering/renderer.js, src/main.js) ──
+  LOW_QUALITY_SCALE: 0.5,      // the canvas holds this fraction of the window's pixels, each way, and the browser stretches it up
+
   MIN_ZOOM: 0.18,
   MAX_ZOOM: 10,
 

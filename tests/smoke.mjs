@@ -3,8 +3,9 @@
 // and checks the reload resumes it. It also walks the normal menu -> tutorial path, which ?debug
 // skips, and checks that settings persist, that a save from an older build still resumes, that
 // the events the simulation emits reach the event bus and that a new colony is grown, and a
-// resumed one caught up, before the first frame. `npm test -- events saves` runs just the named
-// checks (boot, settings, saves, events, fastforward, or a mode from src/modes.js).
+// resumed one caught up, before the first frame, and that the frame cap and low quality save power
+// without changing the colony or the picture. `npm test -- events saves` runs just the named
+// checks (boot, settings, saves, events, fastforward, performance, or a mode from src/modes.js).
 // Numbers can pass while the picture is wrong, so always look at the screenshots this writes to
 // tests/out/.
 import fs from 'node:fs';
@@ -15,6 +16,7 @@ import { serve } from '../tools/serve.mjs';
 import { MODES as MODE_TABLE } from '../src/modes.js';
 import { CONFIG } from '../src/config.js';
 import { fastForward } from '../src/app/fastForward.js';
+import { GameLoop } from '../src/app/gameLoop.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'out');
@@ -26,7 +28,7 @@ const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
 
-const CHECKS = ['boot', 'settings', 'saves', 'events', 'fastforward', ...MODES];
+const CHECKS = ['boot', 'settings', 'saves', 'events', 'fastforward', 'performance', ...MODES];
 const only = process.argv.slice(2);   // the checks to run; none named means all of them
 const unknown = only.filter(name => !CHECKS.includes(name));
 if (unknown.length) {
@@ -186,6 +188,7 @@ async function runBoot() {
     await page.click('#btn-mode-screensaver');
     await page.waitForSelector('#tutorial:not(.hidden)', { timeout: 20_000 });   // the new colony is grown first
     await page.waitForTimeout(1500);   // let a few frames render
+    if (await page.evaluate(() => document.getElementById('perf') !== null)) problems.push('the ?debug frame-rate read-out shows without ?debug');
   } catch (e) {
     problems.push(e.message.split('\n')[0]);
   }
@@ -240,6 +243,27 @@ async function runSettings() {
     await page.evaluate(() => localStorage.setItem('pixelants_settings', '[1,2'));
     await reload(page);
     check(await get(page, 'volume') === 0.6, 'unparseable storage should fall back to the defaults');
+
+    // a default that depends on something settings cannot see (the mode's frame cap): heard by the
+    // listeners but not stored, kept if the player picks the same, and never over a choice already made
+    const dflt = await page.evaluate(() => {
+      const { settings } = window.__pa, calls = [], key = 'pixelants_settings';
+      const before = localStorage.getItem(key);
+      settings.onChange((k, v) => calls.push([k, v]));
+      settings.setDefault('fpsCap', 0);
+      const stored = localStorage.getItem(key), now = settings.get('fpsCap');
+      settings.setDefault('fpsCap', 0);        // the same again: no event
+      settings.setDefault('fpsCap', 'fast');   // wrong type
+      settings.setDefault('bogus', 1);         // not a setting
+      settings.set('fpsCap', 0);               // choosing what the default already is still pins it
+      const pinned = localStorage.getItem(key);
+      settings.setDefault('fpsCap', 30);       // a choice beats a default
+      return { before, stored, now, pinned, kept: settings.get('fpsCap'), calls };
+    });
+    check(dflt.now === 0 && dflt.stored === dflt.before, `a default was stored as the player's choice: it read ${dflt.now}, storage went from ${dflt.before} to ${dflt.stored}`);
+    check(dflt.pinned === '{"fpsCap":0}', `choosing the value a default already had was not kept: ${dflt.pinned}`);
+    check(dflt.kept === 0, `a default beat the player's choice: it read ${dflt.kept}`);
+    check(JSON.stringify(dflt.calls) === '[["fpsCap",0]]', `setDefault told the listeners ${JSON.stringify(dflt.calls)}`);
 
     // the OS asks for less motion: that is the default, but only until the player chooses
     const rctx = await browser.newContext({ viewport: VIEWPORT, reducedMotion: 'reduce' });
@@ -299,7 +323,15 @@ async function runSaves() {
   const errors = watch(page);
   const stored = k => page.evaluate(k => localStorage.getItem(k), k);
   const plant = (k, v) => page.evaluate(([k, v]) => localStorage.setItem(k, v), [k, v]);
-  const resume = async () => {
+  // Come back to the colony with `saves` ({ key: text }) in storage and nothing else. A colony that is
+  // left saves itself (its tab goes hidden), so the saves are planted once the player has gone: from
+  // a page with no game in it, after wiping whatever the leaving wrote.
+  const resume = async saves => {
+    await page.goto(`${base}styles/main.css`);
+    await page.evaluate(([keys, saves]) => {
+      for (const k of keys) localStorage.removeItem(k);
+      for (const [k, v] of Object.entries(saves)) localStorage.setItem(k, v);
+    }, [[OLD, CUR], saves]);
     await page.goto(`${base}?debug&mode=screensaver`);
     await page.waitForFunction(() => window.__pa, null, { timeout: 20_000 });
     return inspect(page);
@@ -321,8 +353,7 @@ async function runSaves() {
     // the old colony resumes, and merely loading it changes nothing in storage. It is planted as if
     // it had just been saved: a colony that was away for a while catches up first (see fastforward)
     const justSaved = JSON.stringify({ ...old, ts: Date.now() });
-    await plant(OLD, justSaved);
-    let back = await resume();
+    let back = await resume({ [OLD]: justSaved });
     problems.push(...resumeProblems(vitals(old), back).map(p => `old save: ${p}`));
     check(await stored(OLD) === justSaved && await stored(CUR) === null, 'loading the old save touched storage');
     await page.waitForTimeout(1000);
@@ -332,18 +363,18 @@ async function runSaves() {
     // raised to something a fresh colony couldn't reach, to see the stats come back too)
     await page.evaluate(() => { window.__pa.sim.stats.peakPopulation = 77; });
     await page.click('#btn-save');
-    const cur = JSON.parse(await stored(CUR));
+    const curRaw = await stored(CUR);
+    const cur = JSON.parse(curRaw);
     const current = await page.evaluate(async () => (await import('/src/saveLoad.js')).VERSION);
     check(cur.version === current, `saved as version ${cur.version}, the current one is ${current}`);
     check(cur.extra && typeof cur.extra === 'object', 'the new save has no extra block');
     check(await stored(OLD) === null, 'the old copy was left behind once the new one was written');
-    back = await resume();
+    back = await resume({ [CUR]: curRaw });
     problems.push(...resumeProblems(vitals(cur), back).map(p => `new save: ${p}`));
 
     // a save from a newer build is refused and left alone; the player gets a fresh colony
     const future = JSON.stringify({ ...old, version: 999 });
-    await plant(CUR, future);
-    back = await resume();
+    back = await resume({ [CUR]: future });
     const fresh = await page.evaluate(() => window.__pa.startup);   // a new colony is grown first
     check(fresh?.kind === 'pregrow' && back.tick <= fresh.ticks + RESUME_TICKS,
       `a newer save was loaded, not refused (startup ${JSON.stringify(fresh)}, tick ${back.tick})`);
@@ -649,9 +680,11 @@ async function runFastForward() {
       throw new Error(`${what}: ${e.message.split('\n')[0]}`);
     }
   };
-  // Come back to a saved colony as if its player had left at `ts` ('none': with no time on the save)
+  // Come back to a saved colony as if its player had left at `ts` ('none': with no time on the save).
+  // A colony that is left saves itself (its tab goes hidden), so the save is planted once the player
+  // has gone: from a page with no game in it (storage belongs to the site, not to a game).
   const returnAt = async (page, what, mode, raw, ts) => {
-    if (page.url() === 'about:blank') await page.goto(base);   // storage belongs to the site
+    await page.goto(`${base}styles/main.css`);
     await page.evaluate(([mode, raw, ts]) => {
       const save = JSON.parse(raw);
       if (ts === 'none') delete save.ts; else save.ts = ts;
@@ -877,12 +910,335 @@ async function runFastForward() {
   report('fastforward', problems, info.join(', '));
 }
 
+// A GameLoop on a screen of our own: each refresh of an `hz` screen calls back with the time it
+// happened, give or take `jitter` ms, except the ones inside `gaps` ([from, to) in ms into the run),
+// when nothing arrives, as in a hidden tab. `at` is [[ms, fn(loop)]] to run once the run gets there.
+// The clock is ours as well, so ten seconds on the screen take no time at all.
+function playLoop({ hz, cap, seconds, jitter = 0, gaps = [], at = [] }) {
+  const saved = { raf: globalThis.requestAnimationFrame, caf: globalThis.cancelAnimationFrame };
+  const begin = 1000;
+  let clock = begin, pending = null, seed = 7;
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  globalThis.requestAnimationFrame = f => { pending = f; return 1; };
+  globalThis.cancelAnimationFrame = () => { pending = null; };
+  performance.now = () => clock;
+  const run = { ticks: 0, refreshes: 0, draws: [], frameMs: [] };   // draws: when each frame was drawn
+  try {
+    const loop = new GameLoop(() => { run.ticks++; }, (alpha, ms) => { run.draws.push(clock - begin); run.frameMs.push(ms); });
+    loop.fpsCap = cap;
+    loop.start();
+    const todo = [...at].sort((a, b) => a[0] - b[0]);
+    for (let k = 1; k * (1000 / hz) <= seconds * 1000; k++) {
+      const t = k * (1000 / hz);
+      while (todo.length && todo[0][0] <= t) todo.shift()[1](loop);
+      if (gaps.some(([from, to]) => t >= from && t < to)) continue;
+      clock = Math.max(clock, begin + t + (jitter ? (rand() * 2 - 1) * jitter : 0));
+      const frame = pending;
+      pending = null;
+      frame(clock);
+      run.refreshes++;
+    }
+  } finally {
+    delete performance.now;
+    for (const [k, v] of [['requestAnimationFrame', saved.raf], ['cancelAnimationFrame', saved.caf]]) {
+      if (v === undefined) delete globalThis[k]; else globalThis[k] = v;
+    }
+  }
+  return run;
+}
+
+// Power saving. The frame cap (src/app/gameLoop.js) holds on screens of every refresh rate and never
+// slows the colony; it starts at the mode's own cap until the player chooses one (src/settings.js,
+// src/modes.js); low quality (src/rendering/renderer.js) draws the same farm on a canvas of a quarter
+// the pixels; a tab that goes hidden saves the colony (src/main.js); ?debug shows the frame rate.
+async function runPerformance() {
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const info = [];
+  const errors = [];
+  const contexts = [];
+  const ready = page => page.waitForFunction(() => window.__pa, null, { timeout: 60_000 });
+  const SCREEN_SECONDS = 10, TICK_MS = 16;
+  const gapsOf = draws => draws.map((t, i) => t - (draws[i - 1] ?? 0));
+  try {
+    // The loop on its own: the cap decides how often the farm is drawn, never how fast it lives
+    for (const [hz, cap] of [[60, 30], [60, 60], [60, 0], [30, 60], [75, 60], [120, 30], [120, 60], [144, 30], [144, 60], [240, 60]]) {
+      const run = playLoop({ hz, cap, seconds: SCREEN_SECONDS });
+      const where = `${hz} Hz screen, cap ${cap || 'off'}`;
+      const want = cap > 0 ? Math.min(cap, hz) : hz;
+      const fps = run.draws.length / SCREEN_SECONDS;
+      check(Math.abs(fps - want) <= 0.3, `${where}: ${fps.toFixed(1)} frames a second, wanted ${want}`);
+      const ticks = SCREEN_SECONDS * 1000 / TICK_MS;
+      check(Math.abs(run.ticks - ticks) <= 2, `${where}: ${run.ticks} sim ticks in ${SCREEN_SECONDS} s, wanted ${ticks}`);
+      const told = run.frameMs.reduce((a, b) => a + b, 0), last = run.draws.at(-1);
+      check(Math.abs(told - last) < 0.001, `${where}: the frames were told ${told.toFixed(1)} ms had passed, the last came at ${last?.toFixed(1)}`);
+      const worst = Math.max(...gapsOf(run.draws));
+      check(worst <= 1000 / want + 1000 / hz + 1, `${where}: a frame came ${worst.toFixed(1)} ms after the one before`);
+    }
+    // A little jitter in the timestamps must not cost frames or make a gap. (Without the 1 ms of
+    // grace for an early refresh, a cap of 60 on a 60 Hz screen loses a frame in 150.)
+    for (const [hz, cap] of [[60, 60], [60, 30], [144, 60]]) {
+      const run = playLoop({ hz, cap, seconds: SCREEN_SECONDS, jitter: 0.4 });
+      const where = `${hz} Hz screen, cap ${cap}, timestamps off by up to 0.4 ms`;
+      const fps = run.draws.length / SCREEN_SECONDS, worst = Math.max(...gapsOf(run.draws));
+      check(Math.abs(fps - cap) <= 0.3, `${where}: ${fps.toFixed(1)} frames a second, wanted ${cap}`);
+      check(worst <= 1000 / cap + 1000 / hz + 1, `${where}: a frame came ${worst.toFixed(1)} ms after the one before`);
+    }
+    // A stall is not made up for with a burst of frames (on a screen that could show them) or of colony time
+    const stall = playLoop({ hz: 120, cap: 30, seconds: 5, gaps: [[2000, 2500]] });
+    const burst = stall.draws.filter(t => t >= 2500 && t < 2600).length;
+    check(burst <= 4, `after half a second with no frames, ${burst} came in the next 100 ms, at a cap of 30`);
+    check(Math.max(...stall.frameMs) <= 100, `a frame was told ${Math.max(...stall.frameMs).toFixed(0)} ms had passed`);
+    check(stall.ticks <= 5000 / TICK_MS - 20, `the colony lived through the stall: ${stall.ticks} ticks in 5 s with half a second missing`);
+    // Ten minutes in a hidden tab: one frame when it comes back, and the colony hardly older
+    const away = playLoop({ hz: 60, cap: 30, seconds: 602, gaps: [[1000, 601000]] });
+    check(away.ticks <= 2000 / TICK_MS + 8, `ten hidden minutes: ${away.ticks} ticks, wanted at most ${2000 / TICK_MS + 8}`);
+    check(Math.max(...away.frameMs) <= 100, `the first frame back was told ${Math.max(...away.frameMs).toFixed(0)} ms had passed`);
+    check(away.draws.filter(t => t > 600000).length <= 31, 'after ten hidden minutes more than a second of frames came in a second');
+    // The cap can change while the game runs, and anything that is not a number of frames means none
+    const live = playLoop({ hz: 120, cap: 60, seconds: 6, at: [[2000, l => { l.fpsCap = 30; }], [4000, l => { l.fpsCap = 0; }]] });
+    for (const [from, to, want] of [[0, 2000, 60], [2100, 4000, 30], [4100, 6000, 120]]) {
+      const fps = live.draws.filter(t => t >= from && t < to).length * 1000 / (to - from);
+      check(Math.abs(fps - want) <= want * 0.05 + 0.5, `live cap change: ${fps.toFixed(1)} frames a second between ${from} and ${to} ms, wanted ${want}`);
+    }
+    for (const bad of [NaN, -30, undefined]) {
+      const run = playLoop({ hz: 60, cap: bad, seconds: 2 });
+      check(run.draws.length === run.refreshes && run.refreshes > 100, `a cap of ${bad} drew ${run.draws.length} of ${run.refreshes} frames, wanted all of them`);
+    }
+    info.push('cap held on 30-240 Hz screens');
+
+    // ── In the game ──
+    const ctx = await browser.newContext({ viewport: VIEWPORT });
+    contexts.push(ctx);
+    const page = await ctx.newPage();
+    errors.push(watch(page));
+    await page.goto(`${base}?debug&new&mode=screensaver`);
+    await ready(page);
+
+    // Zen starts at 30 fps without that being stored as the player's choice, not even when some other
+    // setting is chosen and the player's choices are written out
+    const start = await page.evaluate(() => {
+      const { settings, gameLoop } = window.__pa;
+      const before = { setting: settings.get('fpsCap'), loop: gameLoop.fpsCap, quality: settings.get('quality') };
+      settings.set('volume', 0.5);
+      return { ...before, stored: localStorage.getItem('pixelants_settings') };
+    });
+    check(start.setting === 30 && start.loop === 30, `a new Zen colony should draw at 30 fps: the setting is ${start.setting}, the loop's cap ${start.loop}`);
+    check(!start.stored?.includes('fpsCap'), `the mode's own cap was stored as if the player had chosen it: ${start.stored}`);
+    check(start.quality === 'high', `quality starts at ${start.quality}, not high`);
+
+    // What a cap does to the running game: frames drawn, and colony ticks lived, a second
+    const measure = (cap, ms = 2500) => page.evaluate(async ([cap, ms]) => {
+      const { gameLoop, settings, sim } = window.__pa;
+      gameLoop.setSpeed(1);
+      settings.set('fpsCap', cap);
+      await new Promise(r => setTimeout(r, 300));   // frames just after a change are not a fair count
+      let frames = 0;
+      const drawn = gameLoop.onRender;
+      gameLoop.onRender = function (...args) { frames++; return drawn.apply(this, args); };
+      const t0 = performance.now(), tick0 = sim.world.tick;
+      await new Promise(r => setTimeout(r, ms));
+      const seconds = (performance.now() - t0) / 1000;
+      gameLoop.onRender = drawn;
+      return { fps: frames / seconds, tps: (sim.world.tick - tick0) / seconds };
+    }, [cap, ms]);
+    const at30 = await measure(30), at60 = await measure(60);
+    check(at30.fps >= 21 && at30.fps <= 33, `at a cap of 30 the game drew ${at30.fps.toFixed(1)} frames a second`);
+    check(at60.fps >= 30 && at60.fps <= 66, `at a cap of 60 the game drew ${at60.fps.toFixed(1)} frames a second`);
+    for (const [cap, m] of [[30, at30], [60, at60]]) {
+      check(Math.abs(m.tps - 1000 / TICK_MS) <= 1000 / TICK_MS * 0.15, `at a cap of ${cap} the colony lived ${m.tps.toFixed(1)} ticks a second, not ${1000 / TICK_MS}`);
+    }
+    info.push(`in the game ${at30.fps.toFixed(0)} fps at cap 30 and ${at60.fps.toFixed(0)} at 60`);
+    const chosen = await page.evaluate(() => {
+      const { settings, gameLoop } = window.__pa;
+      settings.set('fpsCap', 0);
+      const off = gameLoop.fpsCap;
+      settings.set('fpsCap', 30);
+      return [off, gameLoop.fpsCap];
+    });
+    check(chosen.join() === '0,30', `choosing a cap did not reach the running loop: it was ${chosen} after choosing 0 then 30`);
+
+    // The ?debug read-out: what it works out, and that it is on screen
+    const unit = await page.evaluate(async () => {
+      const { PerfReadout } = await import('/src/ui/perfReadout.js');
+      let cap = 30;
+      const r = new PerfReadout({ cap: () => cap, quality: () => 'low' });
+      const said = [];
+      for (let i = 0; i <= 60; i++) {   // frames of 4 ms, one of 9, at 60 a second: it speaks every half second
+        r.frame(i === 7 ? 9 : 4, 5000 + i * 1000 / 60);
+        if (i % 30 === 0 && r.el.textContent) said.push(r.el.textContent);
+        if (i === 30) cap = 0;
+      }
+      r.el.remove();
+      return said;
+    });
+    check(unit.join(' | ') === '60 fps · 4.2 ms/frame (worst 9.0) · cap 30 · low | 60 fps · 4.0 ms/frame (worst 4.0) · cap off · low',
+      `a read-out given 60 frames a second said ${JSON.stringify(unit)}`);
+    await page.waitForTimeout(1200);   // the read-out is on the real game, and the cap changes above are over
+    const readout = await page.evaluate(() => document.getElementById('perf')?.textContent);
+    check(/^\d+ fps · [\d.]+ ms\/frame \(worst [\d.]+\) · cap 30 · high$/.test(readout ?? ''), `the ?debug read-out said ${JSON.stringify(readout)}`);
+    await shot(page, 'perf-readout');
+
+    // Low quality draws the very same farm. The colony is frozen so the two are the same moment.
+    const scene = await page.evaluate(() => {
+      const { gameLoop, camera, renderer, sim, settings, CONFIG } = window.__pa;
+      gameLoop.stop();
+      const draw = quality => {
+        settings.set('quality', quality);
+        renderer.render(camera, sim, 0.5, 0, 1);
+        renderer.render(camera, sim, 0.5, 0, 1);   // the first frame after a resize redraws the earth
+        const c = renderer.canvas, g = c.getContext('2d'), cols = 40, rows = 24, px = [];
+        for (let j = 0; j < rows; j++) {
+          for (let i = 0; i < cols; i++) {
+            const d = g.getImageData(Math.floor((i + 0.5) / cols * c.width), Math.floor((j + 0.5) / rows * c.height), 1, 1).data;
+            px.push([d[0], d[1], d[2]]);
+          }
+        }
+        return { w: c.width, h: c.height, css: [c.style.width, c.style.height], look: getComputedStyle(c).imageRendering,
+                 camera: [camera.cw, camera.ch], px };
+      };
+      const high = draw('high'), low = draw('low');
+      return { high, low, win: [innerWidth, innerHeight], scale: CONFIG.LOW_QUALITY_SCALE };
+    });
+    const [ww, wh] = scene.win;
+    const half = n => Math.max(1, Math.round(n * scene.scale));
+    check(scene.high.w === ww && scene.high.h === wh, `high quality: the canvas is ${scene.high.w}x${scene.high.h} in a ${ww}x${wh} window`);
+    check(scene.low.w === half(ww) && scene.low.h === half(wh), `low quality: the canvas is ${scene.low.w}x${scene.low.h}, wanted ${half(ww)}x${half(wh)}`);
+    for (const [name, q] of [['high', scene.high], ['low', scene.low]]) {
+      check(q.css.join() === `${ww}px,${wh}px`, `${name} quality: the canvas is shown ${q.css.join(' x ')}, wanted the size of the window`);
+      check(q.look === 'pixelated', `${name} quality: image-rendering is ${q.look}, not pixelated`);
+      check(q.camera.join() === `${ww},${wh}`, `${name} quality: the camera works in ${q.camera.join('x')}, not in window pixels`);
+    }
+    let off = 0, far = 0;
+    scene.high.px.forEach((p, i) => {
+      const gaps = p.map((v, k) => Math.abs(v - scene.low.px[i][k]));
+      off += gaps.reduce((a, b) => a + b, 0) / 3;
+      if (Math.max(...gaps) > 40) far++;
+    });
+    off /= scene.high.px.length;
+    check(off <= 8 && far / scene.high.px.length <= 0.06, `low quality draws a different picture: ${off.toFixed(1)} off on average, and ${far} of ${scene.high.px.length} places by more than 40`);
+    const lowSoil = await soilTone(page);
+    check(soilDrawn(lowSoil), `low quality: ${soilNote(lowSoil)}`);
+    // The browser stretches it with hard edges: every 2x2 block of the screen is a single colour
+    const sameBlocks = async () => {
+      const png = (await page.screenshot({ clip: { x: 400, y: 250, width: 800, height: 400 } })).toString('base64');
+      return page.evaluate(async b64 => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const g = c.getContext('2d', { willReadFrequently: true });
+        g.drawImage(img, 0, 0);
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        let same = 0, total = 0;
+        for (let y = 0; y + 1 < c.height; y += 2) {
+          for (let x = 0; x + 1 < c.width; x += 2) {
+            const a = (y * c.width + x) * 4, b = a + 4, e = a + c.width * 4, f = e + 4;
+            total++;
+            if ([1, 2].every(k => d[a + k] === d[b + k] && d[a + k] === d[e + k] && d[a + k] === d[f + k]) && d[a] === d[b] && d[a] === d[e] && d[a] === d[f]) same++;
+          }
+        }
+        c.remove();
+        return same / total;
+      }, png);
+    };
+    const lowBlocks = await sameBlocks();
+    await shot(page, 'low-quality');
+    await page.evaluate(() => {
+      const { settings, renderer, camera, sim } = window.__pa;
+      settings.set('quality', 'high');
+      renderer.render(camera, sim, 0.5, 0, 1);
+      renderer.render(camera, sim, 0.5, 0, 1);
+    });
+    const highBlocks = await sameBlocks();
+    check(highBlocks < 0.9, `test setup: ${(highBlocks * 100).toFixed(0)}% of the 2x2 blocks of the full-size picture are one colour already`);
+    check(lowBlocks >= 0.97, `low quality is not stretched with hard edges: ${(lowBlocks * 100).toFixed(0)}% of the 2x2 blocks on screen are one colour`);
+    info.push(`low quality ${scene.low.w}x${scene.low.h}, ${off.toFixed(1)} off the full picture, ${(lowBlocks * 100).toFixed(0)}% hard-edged`);
+
+    // The window can change size, at either quality, without the camera, canvas and screen disagreeing
+    for (const [w, h, quality] of [[1000, 600, 'high'], [1000, 600, 'low'], [1300, 800, 'low'], [1300, 800, 'high']]) {
+      await page.setViewportSize({ width: w, height: h });
+      const got = await page.evaluate(async quality => {
+        window.__pa.settings.set('quality', quality);
+        await new Promise(r => requestAnimationFrame(() => r()));
+        const c = document.getElementById('gameCanvas'), { camera, renderer, sim } = window.__pa;
+        renderer.render(camera, sim, 0.5, 0, 1);
+        renderer.render(camera, sim, 0.5, 0, 1);   // the first frame after a resize redraws the earth
+        const alpha = (x, y) => c.getContext('2d').getImageData(x, y, 1, 1).data[3];
+        return { canvas: [c.width, c.height], css: [c.style.width, c.style.height], camera: [camera.cw, camera.ch],
+                 layout: [renderer.w, renderer.h],
+                 corners: [alpha(0, 0), alpha(c.width - 1, 0), alpha(0, c.height - 1), alpha(c.width - 1, c.height - 1)] };
+      }, quality);
+      const k = quality === 'low' ? scene.scale : 1;
+      const where = `a ${w}x${h} window at ${quality} quality`;
+      check(got.canvas.join() === `${Math.round(w * k)},${Math.round(h * k)}`, `${where}: the canvas is ${got.canvas.join('x')}`);
+      check(got.css.join() === `${w}px,${h}px`, `${where}: the canvas is shown ${got.css.join(' x ')}`);
+      check(got.camera.join() === `${w},${h}`, `${where}: the camera is ${got.camera.join('x')}`);
+      check(got.layout.join() === `${w},${h}`, `${where}: the farm is laid out in ${got.layout.join('x')}, not in window pixels`);
+      check(got.corners.every(a => a === 255), `${where}: the picture does not reach every corner of the canvas (opacity there: ${got.corners.join(', ')})`);
+    }
+    await page.setViewportSize(VIEWPORT);
+
+    // A tab that goes hidden is saved; one that comes into view is not; a finished game is not brought back
+    const CUR = 'pixelants_screensaver';
+    const stored = () => page.evaluate(k => localStorage.getItem(k), CUR);
+    const tabIs = hidden => page.evaluate(h => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
+    await page.evaluate(k => localStorage.removeItem(k), CUR);
+    await tabIs(false);
+    check(await stored() === null, 'the colony was saved when the tab came into view');
+    const before = Date.now();
+    await tabIs(true);
+    const hiddenSave = JSON.parse(await stored() ?? 'null');
+    check(hiddenSave && hiddenSave.ts >= before && hiddenSave.world, `hiding the tab saved ${hiddenSave ? `a save from ${before - hiddenSave.ts} ms before` : 'nothing'}`);
+    await page.evaluate(k => { localStorage.removeItem(k); window.__pa.GameState.over = true; }, CUR);
+    await tabIs(true);
+    check(await stored() === null, 'a game that was over was saved when the tab was hidden');
+    await page.evaluate(() => { window.__pa.GameState.over = false; });
+    await tabIs(false);
+    info.push('hidden tab saves');
+
+    // Survival starts at 60, the player's own choices win over the mode's and stay after a reload
+    const ctx2 = await browser.newContext({ viewport: VIEWPORT });
+    contexts.push(ctx2);
+    const page2 = await ctx2.newPage();
+    errors.push(watch(page2));
+    await page2.goto(`${base}?debug&new&mode=survival`);
+    await ready(page2);
+    const sv = await page2.evaluate(() => ({ setting: window.__pa.settings.get('fpsCap'), loop: window.__pa.gameLoop.fpsCap }));
+    check(sv.setting === 60 && sv.loop === 60, `a new Survival colony should draw at 60 fps: the setting is ${sv.setting}, the loop's cap ${sv.loop}`);
+    await page2.evaluate(() => { window.__pa.settings.set('fpsCap', 0); window.__pa.settings.set('quality', 'low'); });
+    await page2.goto(`${base}?debug&mode=survival`);
+    await ready(page2);
+    const kept = await page2.evaluate(() => {
+      const c = document.getElementById('gameCanvas');
+      return { setting: window.__pa.settings.get('fpsCap'), loop: window.__pa.gameLoop.fpsCap, canvas: [c.width, c.height], win: [innerWidth, innerHeight] };
+    });
+    check(kept.setting === 0 && kept.loop === 0, `no frame cap, chosen in Survival, came back as ${kept.setting} (the loop's cap ${kept.loop})`);
+    check(kept.canvas.join() === `${half(kept.win[0])},${half(kept.win[1])}`, `low quality, chosen, was not there after a reload: the canvas is ${kept.canvas.join('x')} in a ${kept.win.join('x')} window`);
+    await page2.goto(`${base}?debug&new&mode=screensaver`);
+    await ready(page2);
+    const zen = await page2.evaluate(() => window.__pa.gameLoop.fpsCap);
+    check(zen === 0, `a cap chosen in Survival should hold in Zen: it was ${zen}`);
+  } catch (e) {
+    problems.push(e.message.split('\n')[0]);
+  }
+  problems.push(...errors.flat());
+  for (const c of contexts) await c.close();
+  report('performance', problems, info.join(', '));
+}
+
 try {
   if (wanted('boot')) await runBoot();
   if (wanted('settings')) await runSettings();
   if (wanted('saves')) await runSaves();
   if (wanted('events')) await runEvents();
   if (wanted('fastforward')) await runFastForward();
+  if (wanted('performance')) await runPerformance();
   for (const mode of MODES) if (wanted(mode)) await runMode(mode);
 } finally {
   await browser.close();

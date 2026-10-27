@@ -45,6 +45,13 @@ export const settings = {
     try { localStorage.setItem(KEY, JSON.stringify(stored)); } catch { /* full or private */ }
     if (changed) for (const fn of subs) fn(k, v);
   },
+  // A default that depends on something settings cannot see, such as the mode's frame cap. Like the
+  // OS motion preference it is never stored, and a choice the player has made always wins.
+  setDefault(k, v) {
+    if (!valid(k, v) || k in stored || data[k] === v) return;
+    data[k] = v;
+    for (const fn of subs) fn(k, v);
+  },
   onChange: fn => { subs.push(fn); },
   defaults: DEFAULTS,
 };
