@@ -145,6 +145,27 @@ export const CONFIG = {
   // ── Power saving — low quality (src/rendering/renderer.js, src/main.js) ──
   LOW_QUALITY_SCALE: 0.5,      // the canvas holds this fraction of the window's pixels, each way, and the browser stretches it up
 
+  // ── Sound — src/audio/mix.js (what the game asks for), src/audio/audio.js (how it is made) ──
+  // A layer's loudness is a gain: 1 is the layer at its full level, and the player's volume comes on top of it.
+  AUDIO_WIND: 0.12,            // the wind under a clear sky...
+  AUDIO_WIND_OVERCAST: 0.12,   // ...and this much more under a fully overcast one
+  AUDIO_WIND_BURIED: 0.3,      // the share of the wind still heard when the view is deep underground
+  AUDIO_BURY_ROWS: 8,          // the view is that deep once its top edge is this many rows below the surface
+  AUDIO_RAIN: 0.5,             // rain, at full rain
+  AUDIO_NIGHT: 0.15,           // night insects, in full dark
+  AUDIO_BIRDS: 0.18,           // dawn birds, while they sing...
+  AUDIO_BIRDS_FROM: 0.2,       // ...from this time of day (0 midnight, 0.25 sunrise, 0.5 noon)...
+  AUDIO_BIRDS_TO: 0.32,        // ...to this one, and only in clear weather
+  AUDIO_SOIL: 0.1,             // soil clicks, while an ant in view is digging
+  AUDIO_CLOSE_ZOOM: 2,         // soil clicks and hatching pops are heard at this zoom or closer
+  AUDIO_SOIL_RATE: 0.6,        // soil clicks a second for each digging ant in view, at 1× speed...
+  AUDIO_SOIL_MAX_RATE: 14,     // ...and never more than this many a second
+  AUDIO_FADE_IN: 3,            // seconds for the sound to come up when the colony appears
+  AUDIO_UPDATE_MS: 250,        // how often the layers are re-aimed
+  AUDIO_GLIDE: 0.8,            // how long a layer takes to settle on a new loudness (a time constant, in seconds)
+  AUDIO_SFX_GAP: 0.06,         // seconds between two of the same effect, so a burst of hatchings is not a roar
+  AUDIO_TRIM: { wind: 2.5, rain: 1.5 },   // gain that brings each looped layer to a loudness (RMS) of about 0.4 at a layer gain of 1
+
   MIN_ZOOM: 0.18,
   MAX_ZOOM: 10,
 

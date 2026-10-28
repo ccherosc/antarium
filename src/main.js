@@ -21,6 +21,7 @@ import { logEvent, on } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
 import { Tutorial } from './ui/tutorial.js';
 import { PerfReadout } from './ui/perfReadout.js';
+import * as audio from './audio/audio.js';
 
 // URL parameters, read once.
 //   ?debug         expose window.__pa (once the colony is ready) for tests and skip the tutorial
@@ -46,6 +47,13 @@ fitWindow();
 window.addEventListener('resize', fitWindow);
 
 const dashboard = new Dashboard();
+
+// A browser keeps a page silent until the player has touched it, so the sound starts with the first
+// click, tap or key (this is before the menu, which is the first thing there is to click). Every later
+// one tries again: a key that doesn't count as a touch, like Esc, may have left it locked.
+for (const type of ['pointerdown', 'pointerup', 'keydown']) {
+  window.addEventListener(type, () => audio.initAudio(), { capture: true });
+}
 
 // A colony is only built once the mode is known — it decides how long ants live
 function createSim() {
@@ -136,6 +144,7 @@ function triggerGameOver(cause) {
   GameState.over = true;
   gameLoop.stop();
   deleteSave(GameState.mode);
+  audio.playSfx('gameover');
 
   document.getElementById('go-cause').textContent = cause;
   document.getElementById('go-day').textContent   = `Survived Day ${stats.day}`;
@@ -173,6 +182,7 @@ const gameLoop = new GameLoop(
     camera.update(dt);
 
     renderer.render(camera, sim, alpha, frameMs, gameLoop.speed);
+    audio.updateAudio(sim, camera, gameLoop.speed);
     if (hud.panelShown && (frame++ & 3) === 0) dashboard.update(stats, world, antSystem);
 
     if (rules().gameOver && !GameState.over) {
@@ -282,9 +292,14 @@ async function fastForwardStart() {
 const startup = await fastForwardStart();
 if (bootNote) updateSaveStatus(bootNote);
 
+// Effects that follow the colony's events. Listening starts here, not earlier, so the weather and the
+// hatchings of a fast-forward are not played back as one roar.
+on('rainStart', () => audio.playSfx('thunder'));
+on('hatch', e => audio.playSfx('hatch', e));
+
 // Test/debug hook: tests/*.mjs drive the game through this (see claude.md). It appears once the
 // colony is ready, so a test that waits for it never races the fast-forward.
-if (DEBUG) window.__pa = { sim, gameLoop, camera, renderer, director, hud, GameState, CONFIG, settings, startup };
+if (DEBUG) window.__pa = { sim, gameLoop, camera, renderer, director, hud, GameState, CONFIG, settings, startup, audio };
 
 // Manual save
 document.getElementById('btn-save')?.addEventListener('click', () => {

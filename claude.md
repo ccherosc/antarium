@@ -25,6 +25,11 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   rather than adding another localStorage key. A default that depends on the mode (the frame
   cap) is a field in the mode's row in `src/modes.js`, offered with `settings.setDefault`, which
   never stores it and never overrides what the player chose.
+* Sound is made with WebAudio in `src/audio/`: no sound files. A new effect is a function in `SFX` in
+  `audio.js`, played with `playSfx(name)`; what makes a layer louder or quieter is in `mix.js`, and the
+  numbers are `AUDIO_*` in `CONFIG`. It is optional: `playSfx` and `updateAudio` do nothing before the
+  first click or when WebAudio is missing, and anything that throws inside them is caught (`guard`), so
+  never call the audio context from anywhere else in the frame.
 * If you change what a save contains, follow the save rules in `src/saveLoad.js` (bump
   VERSION and add a migration) so existing colonies still load. `tests/fixtures/` holds a real
   old save that `npm test` must keep resuming.
@@ -32,7 +37,8 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   1. `npm test` (smoke test: every mode loads, runs, throws no errors)
   2. Look at the screenshots it writes to `tests/out/` to check visuals.
 * `npm run serve` starts a local server. Add `?debug` to the URL to get `window.__pa`
-  (`sim`, `gameLoop`, `camera`, `renderer`, `director`, `hud`, `GameState`, `CONFIG`, `settings`, and
+  (`sim`, `gameLoop`, `camera`, `renderer`, `director`, `hud`, `GameState`, `CONFIG`, `settings`, `audio`
+  (`src/audio/audio.js`: `audioGraph()` shows the live context and what has played), and
   `startup`: what the start-up fast-forward did), a frame-rate read-out at the top left, and to skip
   the tutorial; `window.__pa` appears once the colony is ready, so wait for it.
   `?debug&new&mode=<mode>` also skips the menu and starts a fresh colony.

@@ -1,6 +1,7 @@
 import { GameState } from '../gameState.js';
 import { rules } from '../modes.js';
 import { onEvent } from '../events.js';
+import { settings } from '../settings.js';
 
 const PREFS_KEY = 'pixelants_prefs';
 const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -160,6 +161,12 @@ export class Hud {
       if (document.fullscreenElement) document.exitFullscreen();
       else document.documentElement.requestFullscreen?.()?.catch?.(() => {});
     } catch { /* not allowed here */ }
+  }
+
+  toggleMute() {
+    const muted = !settings.get('muted');
+    settings.set('muted', muted);
+    this.toast(muted ? 'Sound off' : 'Sound on');
   }
 
   setSpeed(v) {
@@ -338,6 +345,7 @@ export class Hud {
       return;
     }
     if (k === 'f') { if (!e.repeat) this.toggleFullscreen(); return; }
+    if (k === 'm') { if (!e.repeat) this.toggleMute(); return; }
     if (k === '[' || k === ']') { this.stepSpeed(k === ']' ? 1 : -1); return; }
 
     this.director.poke();

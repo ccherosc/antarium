@@ -236,39 +236,174 @@ the right check under a message my harness did not expect.
 
 ---
 
-## T1.3 [S] Ambient soundscape
+## T1.3 [S] Ambient soundscape — DONE
 
-**Why:** sound is the biggest "this is a product" jump. No sound files needed to start —
-WebAudio can make all of this; recorded loops can replace layers later.
+As built (`src/audio/audio.js`, `mix.js` and `noise.js`, all new; also `src/main.js`, `src/ui/hud.js`,
+`src/ui/controls.js`, `src/config.js` and `claude.md`):
+- **The graph.** `buildGraph(ctx, destination)` (exported, so the tests can render it offline): five layer gains →
+  `master` → `fade` → a limiter (a `DynamicsCompressor`, -8 dB, ratio 12: insurance for the thunder) → the
+  speakers; effects go through an `sfx` gain into `master`. Wind is a looping 4 s stereo brown-noise buffer →
+  high-pass 60 Hz → low-pass 350 Hz; rain a looping 2 s stereo white-noise buffer → band-pass 3 kHz, Q 0.7. Night,
+  birds and soil have no continuous source: three 25 ms chirps at 4-5 kHz, two or three 150 ms sweeps from about
+  2 kHz up by 1.75, and clicks of band-passed noise, each booked ahead.
+- **What the sky asks for is `mix.js`**: plain functions of the colony and the camera, so Node can test them.
+  `layerTargets(sky, view)` is the ticket's table (birds 0.18 while `phase` is 0.2-0.32 and the weather is clear;
+  soil 0.1 while an ant digs in view at zoom 2 or more). `watchView` says how far the top of the view is under the
+  ground (`buried`: 0 with the sky in view, 1 eight rows down, where the wind has fallen to 30%) and where from each
+  digger in view is heard. `heardAt` and `panAt` give a pan of -0.8 to 0.8, or `null` out of reach. The numbers are
+  `AUDIO_*` in `CONFIG`.
+- **Aiming and booking.** `updateAudio(sim, camera, speed)` runs each frame, after `renderer.render`. Every 250 ms it
+  sets each layer heading for its target (`setTargetAtTime`, time constant 0.8 s), and `book()` schedules the
+  chirps, songs and clicks of the next 0.6 s on the audio clock: a slow frame makes no stutter, and a stall is not
+  made up for with a heap of missed ones. Crickets come every 0.3-1.2 s, a song every 1.2-4.2 s, and clicks at
+  random, 0.6 a second per digger (14 at most) times the colony's speed, so a paused colony is not heard digging.
+- **Effects.** `playSfx(name, at)` returns whether it played. `place` (a soft pluck) from the food and water
+  branches of `controls.js`; `thunder` (brown noise under a low-pass sweeping 500 to 120 Hz over 5 s) on `rainStart`;
+  `hatch` (a 50 ms pop) on `hatch`, panned to where it happened and heard only when that is on screen at zoom 2 or
+  more; `gameover` (a triangle wave falling 220 to 55 Hz), once, from `triggerGameOver`; `unlock` (659 then 988 Hz)
+  is made and tested, and nothing plays it until there is something to unlock (T4.5). One effect twice within 60 ms
+  plays once. `main.js` listens for events only after the start-up fast-forward, whose weather and hatchings would
+  otherwise play back as one roar.
+- **M** toggles `settings.muted` in `hud.js` (`toggleMute`, toast "Sound off" / "Sound on"); a held key is one press.
+- **Nothing before the first click, and nothing for nobody.** `main.js` calls `initAudio()` from capture listeners on
+  `pointerdown`, `pointerup` and `keydown`; that makes the audio context, so until then there is none. The sound fades
+  in over 3 s from the first `updateAudio`, when the colony is on screen. Muted, or with the tab hidden, the master
+  glides to 0 and 0.4 s later the context is suspended, so it costs nothing; a change of volume or mute, or the tab
+  coming back, resumes it.
+- **Optional.** Without WebAudio the sound is simply off. If anything in it throws, `guard()` closes the context and
+  says `Sound stopped:` in the console, once; the game carries on.
+- **Recorded loops.** `RECORDED` in `audio.js` is a manifest (`{ wind: 'assets/audio/wind.ogg' }`). `useRecording`
+  loads each file named there and loops it into its layer's gain, so the sky still drives it, and stops what was
+  made here: the noise of wind and rain, the booking of the other three. It is empty and no files ship, so the game
+  asks the server for nothing. The `// recorded loop:` comments are in `buildGraph`, on the two continuous layers.
+- `claude.md` has a Sound bullet, and `?debug` has `window.__pa.audio`: `audioGraph()` shows the live context, the
+  nodes and what has played.
 
-**Create `src/audio/audio.js`** exporting `initAudio()`, `updateAudio(sim, camera)`,
-`playSfx(name)`.
+Measured, not listened to (`npm test -- sound` renders the recipes offline with the game's own `buildGraph`, and
+listens to a live page with an analyser). The level is the rms of what reaches the speakers at the default volume
+(0.6), through the limiter, in the lab:
 
-- Browsers block audio until the user interacts: call `initAudio()` from the first
-  `pointerdown` / `keydown` (one-time listener in `main.js`).
-- Master gain = `settings.volume`, 0 when `settings.muted`; fade in over 3 s on start.
-- **Layers** (looping, each with its own gain node; `updateAudio` sets target gains every
-  ~250 ms with `gain.setTargetAtTime(v, now, 0.8)` so changes are smooth):
+| scene | rms | against a clear noon |
+|---|---:|---:|
+| clear noon (the wind) | 0.040 | 1 |
+| overcast | 0.077 | 1.9 |
+| rain | 0.19 | 4.6 |
+| dusk (wind and crickets) | 0.040 | 1 |
+| top of the view 8 rows under the ground | 0.012 | 0.3 |
+| three diggers in close view | 0.042 | 1.05 |
 
-  | Layer | Recipe | Loudness driven by |
-  |---|---|---|
-  | Wind | 4 s looping buffer of brown noise → low-pass 350 Hz | `0.12 + 0.12 * sky.overcast`; quieter when zoomed far in underground |
-  | Rain | white noise → band-pass ~3 kHz, Q 0.7 | `sky.rain * 0.5` |
-  | Night insects | every 0.3–1.2 s, a burst of 3 short (25 ms) sine chirps at 4–5 kHz, random pan | `(1 - sky.light) * 0.15` |
-  | Dawn birds | occasional 150 ms sine sweeps 2→3.5 kHz | only when `sky.phase` is 0.2–0.32, clear weather |
-  | Soil life | tiny 5 ms filtered-noise clicks, rate ∝ digging ants on screen | camera zoom ≥ 2 and ants with `state === STATE.DIGGING` in view |
-- **One-shot effects** (`playSfx`): `place` (soft pluck when food/water dropped), `unlock`
-  (two-note chime), `thunder` (low noise swell — hook `on('rainStart')`), `hatch` (tiny
-  pop, only when zoomed in near it), `gameover` (low falling tone).
-- **M** toggles mute (add to `hud.js` `_onKey`, show a toast "Sound off"/"Sound on").
-- Leave a `// recorded loop:` hook per layer: if `assets/audio/<layer>.ogg` loads, use it
-  instead of the generated noise. (Free CC0 sources for later: freesound.org CC0 filter,
-  Sonniss GDC bundles.)
+On the live page a Zen colony measured 0.038-0.045 by day and 0.187-0.195 in the rain. Each layer alone at a gain of
+1: wind 0.37, rain 0.40, crickets 0.044, birds 0.041, soil clicks 0.021. Everything the sky can ask for at once
+(rain, wind at its loudest, crickets and diggers, with a clap of thunder, a pluck and a hatching on top, volume 1,
+colony at 8x) peaks at 0.94-1.02 through the limiter.
 
-**Done when:** day sounds gentle, rain is audible when it rains, crickets come in at dusk,
-M mutes, nothing plays before the first click, `npm test` passes (no audio errors in
-headless).
+What it costs, in headless Chromium (CPU time of all the browser's processes, as `npm run perf` reads it, with the
+colony's loop stopped so that none of its noise is in it; read the ratios): sound on uses 2.4 points of one core more
+than muted at noon (muted is 0.7%), 2.9 in the rain, 2.9 at dusk and 3.1 with 12 diggers in close view, which is
+4-5% of what the headless Zen colony itself uses at its cap of 30. Muted or hidden it costs nothing: the context
+sleeps. The graph's own work is 0.3-0.6% of a core (rendered offline); most of the rest is the browser keeping an
+audio device open. `npm run perf` with the sound wired in and nobody having clicked, as on a first load: cap 60 107%
+(59.3 fps), cap 30 57%, cap 60 at low quality 48%, cap 30 at low quality 28.5%, against T1.2's 113%, 60-63%, 45-51%
+and 27-29%: no change.
 
+Where it departs from the ticket, and why:
+- **The listeners stay on.** A one-time listener gives up on a key that doesn't count as a gesture (Esc, for one) and
+  leaves the context locked for good, and a touch counts when it ends, not when it begins. So every `pointerdown`,
+  `pointerup` and `keydown` calls `initAudio()`: the first makes the context, each later one tries `resume()` again.
+- **The fade-in starts when the colony is on screen,** not at `initAudio()`: from the menu's click it would be spent
+  on the menu and the fast-forward.
+- **Mute suspends the context** once the volume has faded out, and so does a hidden tab. The ticket only zeroes the
+  master gain, which leaves the audio device and the graph running for nobody.
+- **Trims and a limiter.** The filters take most of the noise away, so `AUDIO_TRIM` (wind 2.5, rain 1.5) brings each
+  looped layer to an rms of about 0.4 at a gain of 1 and the ticket's gains (0.12, 0.5) mean what they say. A 60 Hz
+  high-pass takes out the rumble of the wind and the thunder that small speakers can't play: at least 86% of the
+  wind's power is below 200 Hz and the test keeps under 15% below 40 Hz. The thunder reaches an envelope of 2.6, to
+  come out a little louder than full rain, and the limiter is for that.
+- **Stereo noise and booked events.** The wind and rain buffers have two decorrelated channels, so they spread across
+  the ears rather than sounding from the middle of the head. Chirps, songs and clicks are booked on the audio clock
+  instead of started from a timer, for the reason above.
+- **Recorded loops are a manifest, not a probe.** Trying `assets/audio/<layer>.ogg` for five layers would be five
+  404s in the console on every load. All five layers can be replaced, not only the two noises.
+- **"Quieter when zoomed far in underground" follows the top edge of the view,** not the zoom: the wind falls as the
+  top of the screen goes under the ground, however far in or out the camera is.
+- **A soil click is 6 ms,** not 5: its envelope falls from 3.5 to 0.001 over 6 ms, cut from a 12 ms slice of noise.
+  The 3.5 makes up for what the band-pass leaves of so little noise.
+- `updateAudio` takes a third argument, the colony's speed (`gameLoop.speed`), and `playSfx` a second, where the
+  effect happens.
+
+Things to know:
+- **No one has listened to it.** What can be measured has been (pitch, level, balance, panning, timing, peaks, cost);
+  how it sounds has not. The wind is nearly all below 200 Hz and may be faint on laptop speakers, and the thunder's
+  level is a guess. `AUDIO_*` and `AUDIO_TRIM` in `CONFIG` are the knobs, and `__pa.sim.sky.rain = 1` in the console
+  of a `?debug` page is the quickest way to hear a rainy day.
+- The limiter is a compressor, not a brick wall: the loudest moment measured is 1.02, over full scale by 2% for an
+  instant. The test allows 1.1.
+- Soil clicks and hatching pops need zoom 2 or more, as the ticket says, so a Zen colony at its default zoom hears
+  neither.
+- The desktop and screensaver builds (M3) have no one to click: they must call `audio.initAudio()` at start.
+- Chromium stops updating the value a page reads from a gain node that nothing is playing into. The test reads those
+  values, so it gives each layer a silent `ConstantSourceNode` while it runs; the game doesn't read them.
+- Where `decodeAudioData` takes callbacks and also returns a promise, that promise rejects with the same error as the
+  callback, and the smoke test saw an uncaught error. `useRecording` swallows it.
+
+Test: a new `sound` check in `tests/smoke.mjs` (about 33 s; `npm test -- sound`):
+- In Node: `panAt` and `heardAt` (the middle is the middle, the edges stop short of the ends, nothing is heard from a
+  camera zoomed out, a tile off screen or under the panel); `watchView` (the sky in view is not buried and a view
+  deep in the soil is, counted in rows whatever `CONFIG` says; the diggers in view, none from far out);
+  `layerTargets` for the sky of each hour and weather, and the dawn window against the ticket's 0.2 to 0.32;
+  `soilRate`; the noise (white is white, brown is slow and as loud as asked, a loop of it has no click at the seam).
+- On a lab page, the recipes rendered offline and measured: each layer alone (where its power lies in the spectrum,
+  its level, its peak); each effect (pitch, length, and for eight claps of thunder when it peaks, when it is last
+  heard, how much is below 40 Hz); where each is heard from; whole scenes at the player's volume through the real
+  limiter, against each other and against what each layer adds to the wind of a clear day; the loudest moment of
+  everything at once; and what `book()` schedules, counted (bursts of three chirps 0.3-1.2 s apart, songs of two or
+  three sweeps 1.2-4.2 s apart, clicks at the right rate for one, ten and a thousand diggers and none while paused,
+  never behind the clock, none for a layer too quiet or recorded, no heap after a freeze). Nothing a recipe starts is
+  left running.
+- On real pages: a Survival colony started muted with the clock in the test's hands (no audio context before the first
+  key, one after three; nothing sounds before the colony is on screen; the fade-in, re-aim interval and glide are about
+  3 s, 250 ms and 0.8 s; M turns it on, a held M is one press, M mutes and the context sleeps, an effect asked for
+  just after muting stays quiet; a hidden tab sleeps and wakes; nine scenes of sky against camera put every layer at
+  the gain the mix asks; the effects play once, with the game's own events and the controls' hooks; a recording takes
+  over a layer and a bad one changes nothing; the end of a colony is heard once), a Zen colony started with a click on
+  the menu and its real frame loop (one context, no effect during the founding, the level on the live page, a paused
+  colony not heard digging, a sound that throws neither stops the game nor reports twice), and a browser with no
+  WebAudio (the game runs, M still mutes and says so).
+- Screenshot: `sound-muted` in `tests/out/`.
+
+Checked by breaking things: 120 faults were put, one at a time, into a throwaway copy of the repo: in `CONFIG`, 24
+levels, windows and timings (each layer too loud or too faint, the two trims, the wind's rise in cloud and fall
+underground, the dawn window widened, moved or open at noon, the burial depth, the close zoom, the fade-in, the
+re-aim interval, the glide, the gap between effects, the rate of soil clicks); in the mix, 21 (the pan reversed,
+unclamped or the full width, the dashboard's inset ignored, the zoom threshold, burial, which ants dig, the birds'
+hour and weather, the crickets not following the dark, rain all or nothing, the rate of clicks ignoring the speed
+or without its cap); in the recipes, 28 (the pitch, length, level, panning, spacing or number of notes of the
+crickets, birds, soil clicks, thunder, pluck, chime, hatching pop and game-over tone, and thunder left running);
+in the noise (5); in the graph (6: the limiter off, either trim, a filter skipped or set wrongly); in the
+lifecycle (12: a context made for every key, a muted start that wakes, a hidden tab that keeps playing or never
+wakes, no fade-in, the volume ignored or halved, a sound before the colony is on screen, a throwing sound let out
+or leaving the context open), the booking (5: no look-ahead, events booked late, a stall made up for, soil booked
+while paused, a layer booked however quiet), recordings (2) and `playSfx` (4: no rate limit, mute or position
+ignored, the camera not remembered); and in the wiring, 13 (`main.js` with no start on a key, no update, no speed,
+no thunder, hatching or game-over sound, and a hatching heard from anywhere; `hud.js` with M for N, a repeating M,
+a silent mute and the toasts swapped; `controls.js` with no pluck for food or for water). Every one made
+`npm test -- sound` fail with the message written for it (for three, that the test stopped at the step that waits
+for the sound to start or wake); the unbroken copy passed. Twenty-six did not on the run in which they first came
+up, and the test was tightened for each. Twenty-two were missed outright: ten in the first run (a digger under the
+dashboard, the rain's trim taken off, every sound sent to the middle, thunder left running, an effect asked for
+just after M muted, an effect that ignores where it happens, a hatching heard from anywhere, the colony's speed not
+passed on, a held M, the pluck for water); eight in `CONFIG` that the mix tests did not pin, the levels of night,
+birds, soil and rain and the defaults of the fade-in, the re-aim interval and the glide, which are now compared
+with the wind of a clear day and timed; and four on later runs: an effect played before the colony was on screen,
+the rain against the same cloud without it, the dawn window widened (now held to the ticket's 0.2 to 0.32, with the
+sunrise at 0.25) and the burial depth (a huge `AUDIO_BURY_ROWS` was missed and a tiny one caught: the test now
+counts in rows, whatever `CONFIG` says). Four more were caught, but not by the check written for them:
+`birds-fast-gap` and `mix-pan-full-width` failed under other messages, and `hidden-tab-never-wakes` and
+`hud-m-is-n` left the test hanging, until its wait for the context to wake was made to give up with "the sound did
+not wake". Three places were judged to behave the same from outside and were not tried, so they are not among the
+120 and not counted as caught: the reset of a layer's schedule when it is not wanted (it differs only in when the
+first event comes after a break shorter than a gap), `{ capture: true }` on the gesture listeners (nothing in the
+game stops an event) and the flag that remembers there is no `AudioContext` (a later try fails in the same way).
 ---
 
 ## T1.4 [H] Settings menu UI

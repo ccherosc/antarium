@@ -76,7 +76,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 ### M1 — Commercial polish → `M1-polish.md`
 - [x] T1.1 [S] Fast-forward engine (instant catch-up + pre-grown new colonies)
 - [x] T1.2 [S] Frame cap, power saving, pause when hidden
-- [ ] T1.3 [S] Ambient soundscape (WebAudio, driven by the sky)
+- [x] T1.3 [S] Ambient soundscape (WebAudio, driven by the sky)
 - [ ] T1.4 [H] Settings menu UI
 - [ ] T1.5 [H] Pause menu (Esc) and keyboard help (?)
 - [ ] T1.6 [H] Title screen polish, credits, version

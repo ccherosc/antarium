@@ -1,5 +1,6 @@
 import { TILE, CONFIG } from '../config.js';
 import { setPheromoneOverlay, getPheromoneOverlay } from '../rendering/renderWorld.js';
+import { playSfx } from '../audio/audio.js';
 
 export class Controls {
   constructor(camera, world, gameLoop, antSystem) {
@@ -89,11 +90,13 @@ export class Controls {
       if (world.placeFood(tx, ty, 80)) {
         world.dirty = true;
         this._flashTile(tx, ty);
+        playSfx('place');
       }
     } else if (this.activeTool === 'water') {
       if (world.placeWater(tx, ty, 70)) {
         world.dirty = true;
         this._flashTile(tx, ty);
+        playSfx('place');
       }
     } else if (this.activeTool === 'inspect') {
       this._inspect(tx, ty, world);
