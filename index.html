@@ -124,11 +124,11 @@
 
       <div class="dash-section">
         <div class="dash-label">CONDITIONS</div>
-        <div class="slider-row">
+        <div class="slider-row dev-knob">
           <label>Dig Speed</label>
           <input type="range" id="ctrl-dig-rate" min="0" max="100" value="50">
         </div>
-        <div class="slider-row">
+        <div class="slider-row dev-knob">
           <label>Birthrate</label>
           <input type="range" id="ctrl-birth-rate" min="0" max="100" value="50">
         </div>
@@ -178,6 +178,9 @@
       </button>
       <button class="zoom-btn" id="btn-panel" title="Hide or show the panel (H)">
         <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 2.5h11v9h-11zM9 2.5v9" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+      </button>
+      <button class="zoom-btn" id="btn-settings" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5.91 2.63L6.15 0.96L7.85 0.96L8.09 2.63L9.32 3.14L10.67 2.13L11.87 3.33L10.86 4.68L11.37 5.91L13.04 6.15L13.04 7.85L11.37 8.09L10.86 9.32L11.87 10.67L10.67 11.87L9.32 10.86L8.09 11.37L7.85 13.04L6.15 13.04L5.91 11.37L4.68 10.86L3.33 11.87L2.13 10.67L3.14 9.32L2.63 8.09L0.96 7.85L0.96 6.15L2.63 5.91L3.14 4.68L2.13 3.33L3.33 2.13L4.68 3.14zM8.9 7a1.9 1.9 0 1 0 -3.8 0a1.9 1.9 0 1 0 3.8 0z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
       </button>
     </div>
 
@@ -244,6 +247,76 @@
           <div class="tut-actions">
             <button class="tut-btn-skip" id="tut-skip">Skip</button>
             <button class="tut-btn-next" id="tut-next">Next →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings — opened with the gear in the toolbar (src/ui/settingsMenu.js). Every control names the setting
+         it edits in data-setting. A row marked "hidden" stores its setting but nothing reads it yet: whoever gives
+         it an effect (T1.9 text size, T2.2 clock, T2.3 theme) takes `hidden` off. -->
+    <div id="settings" class="hidden" role="dialog" aria-modal="true" aria-labelledby="set-title">
+      <div class="tut-box set-box">
+        <div class="tut-title" id="set-title">Settings</div>
+
+        <div class="set-row" id="set-row-volume">
+          <label class="set-name" for="set-volume">Volume</label>
+          <input type="range" id="set-volume" data-setting="volume" data-scale="100" min="0" max="100" step="1">
+          <span class="set-value" id="set-volume-value"></span>
+        </div>
+        <div class="set-row">
+          <label class="set-name" for="set-muted">Mute</label>
+          <input type="checkbox" id="set-muted" data-setting="muted">
+          <span class="set-note">or press M</span>
+        </div>
+        <div class="set-row" role="radiogroup" aria-labelledby="set-fps-name">
+          <span class="set-name" id="set-fps-name">Frame rate</span>
+          <div class="set-seg" title="A lower frame rate uses less power">
+            <label><input type="radio" name="set-fps" data-setting="fpsCap" value="30"><span>30</span></label>
+            <label><input type="radio" name="set-fps" data-setting="fpsCap" value="60"><span>60</span></label>
+            <label><input type="radio" name="set-fps" data-setting="fpsCap" value="0"><span>Unlimited</span></label>
+          </div>
+        </div>
+        <div class="set-row" role="radiogroup" aria-labelledby="set-quality-name">
+          <span class="set-name" id="set-quality-name">Quality</span>
+          <div class="set-seg" title="Low draws the farm with fewer pixels, which uses less power">
+            <label><input type="radio" name="set-quality" data-setting="quality" value="high"><span>High</span></label>
+            <label><input type="radio" name="set-quality" data-setting="quality" value="low"><span>Low</span></label>
+          </div>
+        </div>
+        <div class="set-row">
+          <label class="set-name" for="set-motion">Reduce motion</label>
+          <input type="checkbox" id="set-motion" data-setting="reducedMotion">
+          <span class="set-note">no sliding or fading</span>
+        </div>
+
+        <div class="set-row hidden" id="set-row-theme">
+          <label class="set-name" for="set-theme">Theme</label>
+          <select id="set-theme" data-setting="theme">
+            <option value="classic">Classic</option>
+          </select>
+        </div>
+        <div class="set-row hidden" id="set-row-clock">
+          <label class="set-name" for="set-clock">Show clock</label>
+          <input type="checkbox" id="set-clock" data-setting="showClock">
+        </div>
+        <div class="set-row hidden" id="set-row-clock24">
+          <label class="set-name" for="set-clock24">24-hour</label>
+          <input type="checkbox" id="set-clock24" data-setting="clock24h">
+        </div>
+        <div class="set-row hidden" id="set-row-text" role="radiogroup" aria-labelledby="set-text-name">
+          <span class="set-name" id="set-text-name">Text size</span>
+          <div class="set-seg">
+            <label><input type="radio" name="set-text" data-setting="textScale" value="1"><span>100%</span></label>
+            <label><input type="radio" name="set-text" data-setting="textScale" value="1.25"><span>125%</span></label>
+            <label><input type="radio" name="set-text" data-setting="textScale" value="1.5"><span>150%</span></label>
+          </div>
+        </div>
+
+        <div class="tut-footer">
+          <div class="set-note">Esc closes</div>
+          <div class="tut-actions">
+            <button class="tut-btn-next" id="set-close">Close</button>
           </div>
         </div>
       </div>

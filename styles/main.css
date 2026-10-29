@@ -201,6 +201,9 @@ body.no-panel #dashboard { transform: translateX(104%); }
   cursor: pointer;
 }
 
+/* left out by a mode (rules().showConditions) */
+.slider-row.hidden { display: none; }
+
 /* Inspect panel */
 #inspect-panel {
   padding: 8px 10px;
@@ -519,8 +522,9 @@ body.no-panel #dashboard { transform: translateX(104%); }
 
 #hint.fade { opacity: 0; }
 
-/* Tutorial overlay */
-#tutorial {
+/* Tutorial and settings overlay: the settings dialog is the tutorial's box with rows in it */
+#tutorial,
+#settings {
   position: fixed;
   inset: 0;
   z-index: 300;
@@ -529,7 +533,8 @@ body.no-panel #dashboard { transform: translateX(104%); }
   align-items: center;
   justify-content: center;
 }
-#tutorial.hidden { display: none; }
+#tutorial.hidden,
+#settings.hidden { display: none; }
 
 .tut-box {
   background: var(--panel);
@@ -604,6 +609,101 @@ body.no-panel #dashboard { transform: translateX(104%); }
   transition: all 0.15s;
 }
 .tut-btn-next:hover { background: #a07040; }
+
+/* Settings: a name on the left, its control on the right */
+.set-box {
+  max-width: 420px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  font-size: 11px;
+}
+.set-row.hidden { display: none; }
+
+.set-name {
+  width: 96px;
+  flex-shrink: 0;
+  color: var(--text2);
+}
+
+.set-row input[type=range] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent2);
+  cursor: pointer;
+}
+
+.set-row input[type=checkbox] {
+  accent-color: var(--accent2);
+  cursor: pointer;
+  margin: 0;
+}
+
+.set-row select {
+  padding: 5px 8px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  border-radius: 2px;
+}
+
+.set-value {
+  width: 38px;
+  text-align: right;
+  color: var(--text3);
+  font-weight: bold;
+}
+
+.set-note {
+  color: var(--text2);
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* One of a few: the buttons of .tut-btn-skip, the chosen one filled like .tut-btn-next */
+.set-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.set-seg label { position: relative; cursor: pointer; }
+.set-seg input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.set-seg span {
+  display: block;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text2);
+  font-size: 10px;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+.set-seg label:hover span { border-color: var(--accent); color: var(--text); }
+.set-seg input:checked + span {
+  background: var(--accent);
+  border-color: var(--accent2);
+  color: var(--text3);
+}
+.set-seg input:focus-visible + span { outline: 2px solid var(--glow); outline-offset: 2px; }
+
+/* the sound is off: the level can't be heard */
+#settings.is-muted #set-row-volume { opacity: 0.45; }
+
+@media (max-width: 480px) {
+  .set-box { padding: 24px 20px 20px; }
+  .set-row { flex-wrap: wrap; gap: 4px 12px; padding: 4px 0; }
+  .set-name { width: 100%; }
+}
 
 /* Scrollbar for webkit */
 #dashboard::-webkit-scrollbar-thumb:hover { background: var(--accent); }
@@ -724,3 +824,11 @@ body.cine #caption { opacity: 1; }
 }
 
 #toast.show { opacity: 1; }
+
+/* Reduce motion (Settings, or the system asking for it): things change, they don't slide or fade */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  transition: none !important;
+  animation: none !important;
+}

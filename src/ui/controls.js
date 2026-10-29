@@ -1,6 +1,7 @@
 import { TILE, CONFIG } from '../config.js';
 import { setPheromoneOverlay, getPheromoneOverlay } from '../rendering/renderWorld.js';
 import { playSfx } from '../audio/audio.js';
+import { rules } from '../modes.js';
 
 export class Controls {
   constructor(camera, world, gameLoop, antSystem) {
@@ -47,6 +48,9 @@ export class Controls {
   }
 
   _setupSliders() {
+    // The dig-speed and birthrate sliders are developer knobs: a mode can leave them out
+    for (const row of document.querySelectorAll('.dev-knob')) row.classList.toggle('hidden', !rules().showConditions);
+
     const digSlider = document.getElementById('ctrl-dig-rate');
     digSlider?.addEventListener('input', e => {
       CONFIG.DIG_TICKS = Math.round(50 + (100 - parseInt(e.target.value)) * 3.5);

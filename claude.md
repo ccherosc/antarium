@@ -24,7 +24,10 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   `settings.get(key)`, react with `settings.onChange`. Add a new option to its `DEFAULTS`
   rather than adding another localStorage key. A default that depends on the mode (the frame
   cap) is a field in the mode's row in `src/modes.js`, offered with `settings.setDefault`, which
-  never stores it and never overrides what the player chose.
+  never stores it and never overrides what the player chose. Each option also has a row in the
+  settings dialog (`#settings` in `index.html`: a control with `data-setting="key"` is all
+  `src/ui/settingsMenu.js` needs), `hidden` until something reads the option; the `settingsmenu`
+  check in `tests/smoke.mjs` fails for an option with no row and for a visible row it doesn't work.
 * Sound is made with WebAudio in `src/audio/`: no sound files. A new effect is a function in `SFX` in
   `audio.js`, played with `playSfx(name)`; what makes a layer louder or quieter is in `mix.js`, and the
   numbers are `AUDIO_*` in `CONFIG`. It is optional: `playSfx` and `updateAudio` do nothing before the

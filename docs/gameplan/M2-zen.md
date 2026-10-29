@@ -34,7 +34,9 @@ the farm on screen; a second visit resumes the same colony; `npm test` passes.
   `settings.clock24h` picks 24 h vs 12 h.
 - Under it, small: "Day 12 · 214 ants" from `stats`.
 - Shown when `settings.showClock` (toggle in the settings menu). In `?zen`, the URL param
-  `&clock=1` forces it on.
+  `&clock=1` forces it on. The two checkboxes are in the dialog already (`#set-row-clock` and
+  `#set-row-clock24` in `index.html`, hidden): take `hidden` off both and add `showClock` and
+  `clock24h` to `TESTED` in the `settingsmenu` check.
 - Slowly drift the overlay a few pixels every minute (screen burn-in protection).
 
 **Done when:** toggling the setting shows/hides it instantly; screenshot looks clean on a
@@ -70,7 +72,9 @@ screenshots: they must be identical.
 | `gel` | Blue Gel | the classic translucent blue gel farm: glowing cyan medium, lighter tunnels, no strata, faint bubbles |
 | `glow` | Night Glow | near-black soil, tunnels faintly bioluminescent teal, ants slightly lit, starry sky |
 
-**Step 3:** theme select in the settings menu (T1.4); in the demo edition only `classic`
+**Step 3:** theme select in the settings menu (T1.4: `#set-row-theme` in `index.html` is
+there, hidden, with the one `classic` option — add an `<option>` per theme, take `hidden` off
+the row and add `theme` to `TESTED` in the `settingsmenu` check); in the demo edition only `classic`
 is selectable — the others show a lock (T6.1 adds the check; just leave an
 `isFull()`-style hook comment if T6.1 isn't done).
 

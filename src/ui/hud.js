@@ -59,7 +59,12 @@ export class Hud {
     this._hint   = $('hint');
     this._speed  = $('ctrl-speed');
     this._auto   = $('ctrl-auto-camera');
-    this._dialogs = [$('tutorial'), $('gameover'), $('mode-select')].filter(Boolean);
+    this._dialogs = [$('tutorial'), $('gameover'), $('mode-select'), $('settings')].filter(Boolean);
+
+    // Reduce motion: the page's own transitions stop (the farm's camera and effects are T1.9's)
+    const still = () => document.body.classList.toggle('reduce-motion', settings.get('reducedMotion'));
+    still();
+    settings.onChange(key => { if (key === 'reducedMotion') still(); });
 
     const prefs = this._prefs = loadPrefs();
     this.panel = typeof prefs.panel === 'boolean' ? prefs.panel : window.innerWidth >= 720;

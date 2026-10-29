@@ -5,10 +5,11 @@
 // the events the simulation emits reach the event bus and that a new colony is grown, and a
 // resumed one caught up, before the first frame, that the frame cap and low quality save power
 // without changing the colony or the picture, and that the sound stays silent until the first
-// click, follows the sky, mutes, and can never stop the game. `npm test -- events saves` runs
-// just the named checks (boot, settings, saves, events, fastforward, performance, sound, or a mode
-// from src/modes.js). Numbers can pass while the picture is wrong, so always look at the
-// screenshots this writes to tests/out/.
+// click, follows the sky, mutes, and can never stop the game, and that every control in the
+// settings dialog does what it says, keeps the keyboard to itself and survives a reload.
+// `npm test -- events saves` runs just the named checks (boot, settings, settingsmenu, saves,
+// events, fastforward, performance, sound, or a mode from src/modes.js). Numbers can pass while
+// the picture is wrong, so always look at the screenshots this writes to tests/out/.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +33,7 @@ const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
 
-const CHECKS = ['boot', 'settings', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
+const CHECKS = ['boot', 'settings', 'settingsmenu', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
 const only = process.argv.slice(2);   // the checks to run; none named means all of them
 const unknown = only.filter(name => !CHECKS.includes(name));
 if (unknown.length) {
@@ -306,6 +307,357 @@ async function runSettings() {
   problems.push(...errors.flat());
   for (const c of contexts) await c.close();
   report('settings', problems, 'defaults, validation, reload, reduced motion');
+}
+
+// The settings dialog (T1.4). The gear opens it; each control edits one setting and the farm or the
+// sound changes with it at once; the choices come back after a reload; and the dialog is a proper
+// modal: the farm's keys and clicks stay behind it and Tab stays inside it. Real clicks and keys, as
+// a player makes them.
+async function runSettingsMenu() {
+  // The settings whose control is worked below. A control that is shown and is not in here fails the
+  // check: a row with no effect behind it belongs in the dialog hidden (the note in index.html)
+  const TESTED = ['volume', 'muted', 'fpsCap', 'quality', 'reducedMotion'];
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const errors = [];
+  const contexts = [];
+  const ready = page => page.waitForFunction(() => window.__pa, null, { timeout: 60_000 });
+  // The audio thread runs behind when the machine is busy: wait for the sound to get where it is
+  // going, and if it never does, the check that follows says what it did instead
+  const till = (page, test, arg) => page.waitForFunction(test, arg, { timeout: 6000 }).catch(() => {});
+  const half = (n, scale) => Math.max(1, Math.round(n * scale));
+  const wrong = (got, want) => Object.keys(want).filter(k => got[k] !== want[k]).map(k => `${k} is ${got[k]}, wanted ${want[k]}`).join('; ');
+  const seg = (page, name, value) => page.locator('#settings label', { has: page.locator(`input[name="${name}"][value="${value}"]`) });
+
+  // The sound is awake once a click has made it (a muted one sleeps until it is unmuted)
+  let awake = false;
+  const wake = async page => {
+    awake = await page.waitForFunction(() => window.__pa.audio.audioGraph()?.ctx.state === 'running', null, { timeout: 5000 }).then(() => true, () => false);
+    return awake;
+  };
+  // A page with the colony ready. The camera tour is off: it would put the panel away under the H key.
+  const tame = async page => {
+    await ready(page);
+    await page.evaluate(() => { window.__pa.director.auto = false; });
+  };
+  // A browser of its own, so that nothing chosen before is in its storage
+  const fresh = async (query, viewport = VIEWPORT) => {
+    const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
+    contexts.push(context);
+    const page = await context.newPage();
+    errors.push(watch(page));
+    await page.goto(`${base}${query}`);
+    await tame(page);
+    return page;
+  };
+  // What the dialog shows, what is chosen, and what the game does about it
+  const look = page => page.evaluate(() => {
+    const { settings, gameLoop, hud, CONFIG } = window.__pa;
+    const dialog = document.getElementById('settings'), canvas = document.getElementById('gameCanvas');
+    const picked = name => document.querySelector(`#settings input[name="${name}"]:checked`)?.value;
+    const sound = window.__pa.audio.audioGraph();
+    // A modal has the whole page under it: at the middle of its Close button, of the panel and of the
+    // toolbar (where they are on screen), what a click would reach must be the dialog or in it
+    const covered = ['set-close', 'dashboard', 'toolbar'].filter(id => {
+      const r = document.getElementById(id).getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+      return x >= 0 && y >= 0 && x < innerWidth && y < innerHeight && !dialog.contains(document.elementFromPoint(x, y));
+    });
+    return {
+      open: getComputedStyle(dialog).display !== 'none',   // as a player sees it, whatever the classes say
+      covered,
+      focus: document.activeElement?.id || document.activeElement?.tagName,
+      shows: {
+        volume: Number(document.getElementById('set-volume').value), said: document.getElementById('set-volume-value').textContent,
+        muted: document.getElementById('set-muted').checked, fps: picked('set-fps'), quality: picked('set-quality'),
+        motion: document.getElementById('set-motion').checked, dim: dialog.classList.contains('is-muted'),
+      },
+      chose: Object.fromEntries(['volume', 'muted', 'fpsCap', 'quality', 'reducedMotion'].map(k => [k, settings.get(k)])),
+      stored: localStorage.getItem('pixelants_settings'),
+      loop: gameLoop.fpsCap, speed: gameLoop.speed, panel: hud.panel,
+      canvas: [canvas.width, canvas.height], win: [innerWidth, innerHeight], scale: CONFIG.LOW_QUALITY_SCALE,
+      still: document.body.classList.contains('reduce-motion'),
+      glide: getComputedStyle(document.getElementById('dashboard')).transitionDuration,
+      master: sound?.graph.master.gain.value, played: { ...sound?.played },
+    };
+  });
+  // The sound is as loud as the volume says
+  const loud = async (page, want, why) => {
+    if (!awake) return;
+    await till(page, v => Math.abs(window.__pa.audio.audioGraph().graph.master.gain.value - v) < 0.03, want);
+    const { master } = await look(page);
+    check(Math.abs(master - want) < 0.03, `${why}: the master volume is ${master?.toFixed(2)}, wanted ${want.toFixed(2)}`);
+  };
+  // Which rows of the Conditions panel a player can see
+  const conditions = page => page.evaluate(() => Object.fromEntries(
+    [['dig', 'ctrl-dig-rate'], ['birth', 'ctrl-birth-rate'], ['speed', 'ctrl-speed'], ['tour', 'ctrl-auto-camera']]
+      .map(([name, id]) => [name, document.getElementById(id).offsetParent !== null])));
+
+  try {
+    // ── Zen: the dialog, one control at a time ──
+    const page = await fresh('?debug&new&mode=screensaver');
+    let s = await look(page);
+    let bad;
+    check(!s.open, 'the settings dialog is open before anyone asked');
+    check(s.stored === null, `a new visitor already has settings stored: ${s.stored}`);
+    const zen = await conditions(page);
+    check(!zen.dig && !zen.birth && zen.speed && zen.tour,
+      `Zen's Conditions panel shows ${JSON.stringify(zen)}, wanted Sim Speed and Auto Tour and no dig-speed or birthrate slider`);
+    check(await page.evaluate(() => document.querySelector('#toolbar > #btn-settings')?.title) === 'Settings',
+      'the toolbar has no gear button titled Settings');
+
+    await page.click('#btn-settings');
+    check(await wake(page), 'the sound did not wake after the first click on the page');
+    s = await look(page);
+    check(s.open, 'the gear did not open the settings dialog');
+    check(!s.covered.length, `something covers the open settings dialog: at the middle of ${s.covered.join(', ')} a click would not reach it`);
+    check(s.focus === 'set-volume', `the keyboard is on ${s.focus} when the dialog opens, wanted the volume slider`);
+    check(await page.getAttribute('#settings', 'role') === 'dialog' && await page.getAttribute('#settings', 'aria-modal') === 'true',
+      'the dialog is not marked up as a modal dialog');
+    bad = wrong(s.shows, { volume: 60, said: '60%', muted: false, fps: '30', quality: 'high', motion: false, dim: false });
+    check(!bad, `a new Zen colony's dialog shows: ${bad}`);
+    check(s.loop === 30, `a new Zen colony's game loop is capped at ${s.loop} frames a second, wanted Zen's own 30`);
+    await shot(page, 'settings-menu');
+
+    // Opening and closing it alone chooses nothing (a stored value would pin the mode's own frame cap)
+    await page.keyboard.press('Escape');
+    s = await look(page);
+    check(!s.open && s.focus === 'btn-settings', `Esc left the dialog ${s.open ? 'open' : 'closed'} with the keyboard on ${s.focus}, wanted it closed and the keyboard back on the gear`);
+    check(s.stored === null, `opening and closing the dialog stored settings the player never chose: ${s.stored}`);
+
+    // It shows what is chosen, whether that changed before it opened or while it is open
+    await page.evaluate(() => { const { settings } = window.__pa; settings.set('volume', 0.25); settings.set('muted', true); });
+    await page.click('#btn-settings');
+    await page.click('#set-title');   // inside the box: it stays open
+    check((await look(page)).open, 'a click on the dialog itself closed it');
+    bad = wrong((await look(page)).shows, { volume: 25, said: '25%', muted: true, dim: true });
+    check(!bad, `the dialog, opened after the volume and mute were changed elsewhere, shows: ${bad}`);
+    await page.evaluate(() => { const { settings } = window.__pa; settings.set('volume', 0.6); settings.set('muted', false); });
+    bad = wrong((await look(page)).shows, { volume: 60, said: '60%', muted: false, dim: false });
+    check(!bad, `the open dialog, after the volume and mute were changed back elsewhere, shows: ${bad}`);
+    await wake(page);
+
+    // Every setting has a row, and every row a player can see has been worked below
+    const rows = await page.evaluate(() => [...document.querySelectorAll('#settings [data-setting]')]
+      .map(el => ({ key: el.dataset.setting, shown: el.offsetParent !== null })));
+    const known = await page.evaluate(() => Object.keys(window.__pa.settings.defaults));
+    for (const key of known) check(rows.some(r => r.key === key), `the setting ${key} has no control in the dialog: add a row to #settings in index.html, hidden until something reads it`);
+    for (const key of new Set(rows.filter(r => r.shown).map(r => r.key))) {
+      check(TESTED.includes(key), `the dialog shows a control for ${key} that no test works: show it only once something reads it, then test it here`);
+    }
+    for (const key of TESTED) check(rows.some(r => r.key === key && r.shown), `${key} is tested here but the dialog shows no control for it`);
+
+    // Volume: the slider follows the mouse and the keys, the number beside it follows the slider,
+    // and the sound follows the number
+    const bar = await page.locator('#set-volume').boundingBox();
+    const chimes = (await look(page)).played.place ?? 0;
+    await page.mouse.click(bar.x + bar.width * 0.4, bar.y + bar.height / 2);
+    s = await look(page);
+    check(Math.abs(s.shows.volume - 40) <= 3, `a click 40% along the volume slider set it to ${s.shows.volume}`);
+    check(s.chose.volume === s.shows.volume / 100 && s.shows.said === `${s.shows.volume}%`,
+      `the slider reads ${s.shows.volume} and says ${s.shows.said}, but the volume is ${s.chose.volume}`);
+    await loud(page, s.chose.volume, 'the volume slider');
+    if (awake) check(((await look(page)).played.place ?? 0) > chimes, 'letting go of the volume slider played no sound to judge the volume by');
+    await page.focus('#set-volume');   // the click let go of the slider: the keys need it back
+    for (const [key, want] of [['End', 100], ['Home', 0], ['ArrowRight', 1]]) {
+      await page.keyboard.press(key);
+      s = await look(page);
+      check(s.shows.volume === want && s.chose.volume === want / 100 && s.shows.said === `${want}%`,
+        `${key} on the volume slider: it shows ${s.shows.volume} (${s.shows.said}) and the volume is ${s.chose.volume}, wanted ${want}`);
+      if (want === 100) await loud(page, 1, 'the volume slider at its top');
+    }
+    await page.mouse.move(bar.x + bar.width * 0.2, bar.y + bar.height / 2);   // held and dragged, the volume follows before the hand lets go
+    await page.mouse.down();
+    await page.mouse.move(bar.x + bar.width * 0.7, bar.y + bar.height / 2, { steps: 5 });
+    s = await look(page);
+    check(Math.abs(s.shows.volume - 70) <= 3 && s.chose.volume === s.shows.volume / 100 && s.shows.said === `${s.shows.volume}%`,
+      `the volume slider, held 70% along: it shows ${s.shows.volume} (${s.shows.said}) and the volume is ${s.chose.volume}`);
+    await page.mouse.up();
+    await page.mouse.click(bar.x + bar.width * 0.35, bar.y + bar.height / 2);
+    const volume = (await look(page)).chose.volume;
+    await wake(page);
+    await loud(page, volume, 'the volume slider, raised again');
+
+    // Mute
+    await page.click('#set-muted');
+    s = await look(page);
+    check(s.chose.muted && s.shows.muted && s.shows.dim, `Mute: the setting is ${s.chose.muted}, the box ${s.shows.muted}, the volume row dimmed ${s.shows.dim}`);
+    await loud(page, 0, 'Mute');
+    await page.click('#set-muted');
+    s = await look(page);
+    check(!s.chose.muted && !s.shows.muted && !s.shows.dim, `Mute, again: the setting is ${s.chose.muted}, the box ${s.shows.muted}, the volume row dimmed ${s.shows.dim}`);
+    await wake(page);
+    await loud(page, volume, 'Mute, taken off');
+
+    // Frame rate: the loop's cap follows
+    const caps = await page.$$eval('input[name="set-fps"]', els => els.map(el => el.value).join());
+    check(caps === '30,60,0', `the frame rate choices are ${caps}, wanted 30, 60 and 0 (unlimited)`);
+    for (const [value, cap] of [['0', 0], ['60', 60], ['30', 30]]) {
+      await seg(page, 'set-fps', value).click();
+      s = await look(page);
+      check(s.chose.fpsCap === cap && s.loop === cap && s.shows.fps === value,
+        `Frame rate ${value}: the setting is ${s.chose.fpsCap}, the game loop's cap ${s.loop}, the dialog shows ${s.shows.fps}`);
+    }
+    await page.focus('input[name="set-fps"][value="30"]');
+    await page.keyboard.press('ArrowRight');
+    s = await look(page);
+    check(s.chose.fpsCap === 60 && s.loop === 60, `the arrow key on the frame rate: the setting is ${s.chose.fpsCap}, the game loop's cap ${s.loop}, wanted 60`);
+
+    // Quality: the canvas is drawn with fewer pixels, and with all of them again
+    await seg(page, 'set-quality', 'low').click();
+    s = await look(page);
+    check(s.chose.quality === 'low' && s.shows.quality === 'low' && s.canvas.join() === `${half(s.win[0], s.scale)},${half(s.win[1], s.scale)}`,
+      `Quality low: the setting is ${s.chose.quality}, the canvas is ${s.canvas.join('x')} in a ${s.win.join('x')} window, wanted ${half(s.win[0], s.scale)}x${half(s.win[1], s.scale)}`);
+    await seg(page, 'set-quality', 'high').click();
+    s = await look(page);
+    check(s.chose.quality === 'high' && s.canvas.join() === s.win.join(), `Quality high: the setting is ${s.chose.quality}, the canvas is ${s.canvas.join('x')} in a ${s.win.join('x')} window`);
+
+    // Reduce motion: the page's own sliding and fading stop. The label counts as the box.
+    check(s.glide === '0.55s' && !s.still, `test setup: the panel's slide is ${s.glide} and the page is ${s.still ? '' : 'not '}marked as reduced motion`);
+    await page.click('label[for="set-motion"]');
+    s = await look(page);
+    check(s.chose.reducedMotion && s.shows.motion && s.still && s.glide === '0s',
+      `Reduce motion on: the setting is ${s.chose.reducedMotion}, the page is marked ${s.still}, the panel's slide takes ${s.glide}, wanted 0s`);
+    await page.click('#set-motion');
+    s = await look(page);
+    check(!s.chose.reducedMotion && !s.shows.motion && !s.still && s.glide === '0.55s',
+      `Reduce motion off: the setting is ${s.chose.reducedMotion}, the page is marked ${s.still}, the panel's slide takes ${s.glide}, wanted 0.55s`);
+    await page.click('#set-motion');   // left on: the reload below must bring it back
+
+    // The dialog has the keyboard: the farm's keys do nothing behind it, and work again once it is gone
+    await page.click('#set-title');   // inside the box: it stays open, and no control keeps the keyboard
+    const farm = async () => { const t = await look(page); return `${t.open ? 'open' : 'closed'}, speed ${t.speed}, panel ${t.panel ? 'out' : 'away'}, muted ${t.chose.muted}`; };
+    const before = await farm();
+    check(before.startsWith('open'), 'a click on the dialog itself closed it');
+    for (const key of [' ', 'h', 'm']) await page.keyboard.press(key);
+    check(await farm() === before, `Space, H and M did something behind the open dialog: ${before}, then ${await farm()}`);
+    await page.click('#set-close');
+    s = await look(page);
+    check(!s.open && s.focus === 'BODY', `the Close button left the dialog ${s.open ? 'open' : 'closed'} with the keyboard on ${s.focus}, wanted it closed and no button holding the keyboard (Space is the pause key)`);
+    const speed = s.speed;
+    await page.keyboard.press(' ');
+    check((await look(page)).speed === 0, 'Space did not pause the game once the dialog had closed');
+    await page.keyboard.press(' ');
+    check((await look(page)).speed === speed, 'Space did not carry the game on again');
+    await page.keyboard.press('h');
+    check(!(await look(page)).panel, 'H did not put the panel away once the dialog had closed');
+    await page.keyboard.press('h');
+    await page.keyboard.press('m');
+    check((await look(page)).chose.muted, 'M did not mute once the dialog had closed');
+    await page.keyboard.press('m');
+    check(!(await look(page)).chose.muted, 'M did not unmute');
+
+    // Tab goes round the dialog and never out to the farm; Enter on Close hands the keyboard back to the gear
+    await page.click('#btn-settings');
+    const reached = new Set();
+    let strayed = null;
+    const whereIs = () => page.evaluate(() => { const a = document.activeElement; return { id: a.id || a.name || a.tagName, inside: document.getElementById('settings').contains(a) }; });
+    for (let i = 0; i < 24 && !strayed; i++) {
+      await page.keyboard.press('Tab');
+      const at = await whereIs();
+      reached.add(at.id);
+      if (!at.inside) strayed = at.id;
+    }
+    check(!strayed, `Tab went out of the dialog, to ${strayed}`);
+    for (const id of ['set-volume', 'set-muted', 'set-fps', 'set-quality', 'set-motion', 'set-close']) check(reached.has(id), `Tab never reached ${id}`);
+    await page.focus('#set-volume');
+    await page.keyboard.press('Shift+Tab');
+    check((await whereIs()).id === 'set-close', `Shift+Tab from the first control went to ${(await whereIs()).id}, wanted the last, Close`);
+    await page.keyboard.press('Enter');
+    s = await look(page);
+    check(!s.open && s.focus === 'btn-settings', `Enter on Close left the dialog ${s.open ? 'open' : 'closed'} with the keyboard on ${s.focus}, wanted it closed and the keyboard back on the gear`);
+
+    // A click outside the box closes it, and is not also a click on the farm behind
+    await page.evaluate(() => window.__pa.gameLoop.setSpeed(0));   // the colony holds still, so any food that lands is ours
+    const food = () => page.evaluate(() => window.__pa.sim.world.foodAmount.reduce((a, b) => a + b, 0));
+    await page.click('#btn-settings');
+    const fed = await food();
+    await page.mouse.click(300, 450);
+    check(!(await look(page)).open, 'a click outside the box did not close the dialog');
+    check(await food() === fed, 'the click that closed the dialog also dropped food on the farm behind it');
+    await page.mouse.click(300, 450);   // the same click, with the dialog gone, feeds the colony: so the check above could have failed
+    check(await food() > fed, 'test setup: a click on the farm dropped no food');
+    await page.evaluate(speed => window.__pa.gameLoop.setSpeed(speed), speed);
+
+    // What a player leaves with: a quiet, frugal farm. It must still be so after a reload.
+    await page.click('#btn-settings');
+    await seg(page, 'set-fps', '0').click();
+    await seg(page, 'set-quality', 'low').click();
+    await page.click('#set-muted');
+    const kept = await look(page);
+    check(kept.chose.volume === volume && kept.chose.muted && kept.chose.fpsCap === 0 && kept.chose.quality === 'low' && kept.chose.reducedMotion,
+      `test setup: the choices are ${JSON.stringify(kept.chose)}`);
+    check(Object.keys(JSON.parse(kept.stored)).sort().join() === 'fpsCap,muted,quality,reducedMotion,volume',
+      `storage holds ${kept.stored}, wanted just the five settings the player chose`);
+    await page.reload();
+    await tame(page);
+    s = await look(page);
+    check(JSON.stringify(s.chose) === JSON.stringify(kept.chose), `after a reload the settings are ${JSON.stringify(s.chose)}, they were ${JSON.stringify(kept.chose)}`);
+    check(s.loop === 0, `after a reload the game loop's cap is ${s.loop}, wanted the chosen 0 (unlimited), not the mode's own`);
+    check(s.canvas.join() === `${half(s.win[0], s.scale)},${half(s.win[1], s.scale)}`, `after a reload the canvas is ${s.canvas.join('x')} in a ${s.win.join('x')} window, wanted low quality`);
+    check(s.still && s.glide === '0s', `after a reload the page is marked ${s.still} and the panel's slide takes ${s.glide}, wanted reduced motion`);
+    await page.click('#btn-settings');
+    bad = wrong((await look(page)).shows, { volume: Math.round(volume * 100), muted: true, fps: '0', quality: 'low', motion: true, dim: true });
+    check(!bad, `after a reload the dialog shows: ${bad}`);
+    await page.click('#set-muted');
+    check(await wake(page), 'the sound did not wake when it was unmuted after a reload');
+    await loud(page, volume, 'the volume kept over a reload');
+
+    // ── Survival: the developer sliders are there, and the dialog fits a phone ──
+    const hard = await fresh('?debug&new&mode=survival');
+    const cond = await conditions(hard);
+    check(cond.dig && cond.birth && cond.speed, `Survival's Conditions panel shows ${JSON.stringify(cond)}, wanted every slider`);
+    await hard.setViewportSize({ width: 360, height: 640 });
+    await hard.waitForTimeout(400);
+    await hard.click('#btn-settings', { timeout: 5000 });
+    const fit = await hard.evaluate(() => {
+      const box = document.querySelector('.set-box').getBoundingClientRect();
+      const stray = [...document.querySelectorAll('#settings input, #settings select, #settings button')]
+        .filter(el => el.offsetParent && (el.getBoundingClientRect().left < box.left - 1 || el.getBoundingClientRect().right > box.right + 1))
+        .map(el => el.id || el.name);
+      return { box: [box.left, box.top, box.right, box.bottom].map(Math.round), win: [innerWidth, innerHeight], wide: document.documentElement.scrollWidth, stray };
+    });
+    check(fit.box[0] >= 0 && fit.box[1] >= 0 && fit.box[2] <= fit.win[0] && fit.box[3] <= fit.win[1],
+      `on a ${fit.win.join('x')} screen the dialog spans ${fit.box.join(', ')} (left, top, right, bottom)`);
+    check(fit.wide <= fit.win[0], `on a ${fit.win.join('x')} screen the page is ${fit.wide} wide: it scrolls sideways`);
+    check(!fit.stray.length, `on a ${fit.win.join('x')} screen ${fit.stray.join(', ')} stick out of the dialog`);
+    const near = await look(hard);
+    check(!near.covered.length, `on a ${fit.win.join('x')} screen something covers the open settings dialog: at the middle of ${near.covered.join(', ')} a click would not reach it`);
+    await shot(hard, 'settings-menu-narrow');
+    if (!near.covered.includes('set-close')) {   // else the message above says so, and the click would only wait
+      await hard.click('#set-close', { timeout: 5000 });   // reachable, if the box has to scroll
+      check(!(await look(hard)).open, 'the Close button did not close the dialog on a small screen');
+    }
+
+    // ── Under another dialog: the mouse can't reach the gear, but Tab can, and they have the keyboard first ──
+    // (The mode menu is only up before the gear exists. The tutorial and the end of a colony are the two left.)
+    for (const [query, overlay, raise, dismiss] of [
+      ['?mode=screensaver', 'tutorial', async () => {}, over => over.keyboard.press('Escape')],
+      ['?debug&new&mode=survival', 'gameover',
+        async over => { await ready(over); await over.evaluate(() => { window.__pa.gameLoop.setSpeed(0); window.__pa.sim.queen.health = 0; }); },   // held still, so no tick heals her before a frame sees her
+        over => over.evaluate(() => document.getElementById('gameover').classList.add('hidden'))],
+    ]) {
+      const context = await browser.newContext({ viewport: VIEWPORT, reducedMotion: 'no-preference' });
+      contexts.push(context);
+      const over = await context.newPage();
+      errors.push(watch(over));
+      await over.goto(`${base}${query}`);
+      await raise(over);
+      await over.waitForSelector(`#${overlay}:not(.hidden)`, { timeout: 60_000 });
+      const opens = () => over.evaluate(() => !document.getElementById('settings').classList.contains('hidden'));
+      const gear = () => over.evaluate(() => document.getElementById('btn-settings').click());   // what Enter on the focused gear does
+      await gear();
+      check(!await opens(), `the settings dialog opened over the ${overlay}`);
+      await dismiss(over);
+      await over.waitForSelector(`#${overlay}.hidden`, { state: 'attached', timeout: 10_000 });
+      await gear();
+      check(await opens(), `test setup: the gear did not open the settings dialog once the ${overlay} was gone`);
+    }
+  } catch (e) {
+    problems.push(`stopped: ${e.message.split('\n')[0]}`);
+  }
+  problems.push(...errors.flat());
+  for (const c of contexts) await c.close();
+  report('settingsmenu', problems, 'gear, each control and its effect, keys, focus, reload, small screen');
 }
 
 // Saves outlive builds. tests/fixtures/save-v2-screensaver.json is a real save from the build
@@ -2135,6 +2487,7 @@ async function runSound() {
 try {
   if (wanted('boot')) await runBoot();
   if (wanted('settings')) await runSettings();
+  if (wanted('settingsmenu')) await runSettingsMenu();
   if (wanted('saves')) await runSaves();
   if (wanted('events')) await runEvents();
   if (wanted('fastforward')) await runFastForward();

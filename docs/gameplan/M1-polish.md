@@ -407,33 +407,131 @@ game stops an event) and the flag that remembers there is no `AudioContext` (a l
 
 ---
 
-## T1.4 [H] Settings menu UI
+## T1.4 [H] Settings menu UI — DONE
 
-**Files:** `index.html`, `styles/main.css`, new `src/ui/settingsMenu.js`, `src/main.js`.
+As built (`index.html`, `styles/main.css`, the new `src/ui/settingsMenu.js`; also `src/main.js`, `src/ui/hud.js`,
+`src/ui/controls.js`, `src/modes.js`, `tests/smoke.mjs` and `claude.md`):
+- **The gear.** `#btn-settings` (title and `aria-label` "Settings") is the last button in `#toolbar`, after `#btn-panel`,
+  with the same `zoom-btn` markup and a cog drawn as an SVG path.
+- **The dialog.** `#settings` is built from the tutorial's classes (`.tut-box`, `.tut-title`, `.tut-footer`,
+  `.tut-btn-next`) plus `.set-box`, and shares its overlay rule in `main.css` (`#tutorial, #settings`, z-index 300), so
+  the two look alike. It is `role="dialog"` and `aria-modal="true"`. Its rows: Volume (a 0-100 slider with the number
+  beside it), Mute ("or press M"), Frame rate 30 / 60 / Unlimited and Quality High / Low (segmented radio buttons,
+  `.set-seg`), Reduce motion, then Close with a note that Esc closes. The volume row dims while the sound is muted.
+- **`SettingsMenu`** edits whatever carries `data-setting="<key>"`, and nothing else is named in it. `_show()` writes
+  `settings.get(key)` into each control when the dialog opens and whenever any setting changes (`settings.onChange`),
+  so the dialog is right if M is pressed while it is open. `_edit(el)` turns the control's text into the setting's type
+  (a number if the default is a number, divided by the slider's `data-scale`: the volume is 0-1 in `settings` and 0-100
+  on the slider), calls `settings.set` and shows what `settings` kept. A slider acts on `input`, the other controls on
+  `change`: there is no Apply button. What a setting does is up to whoever reads it (`audio.js`, `main.js`, `hud.js`),
+  as before. Letting go of the volume slider plays the `place` pluck, so a quiet farm still answers.
+- **The dialog is modal.** Opening it focuses the volume slider. Esc and Close with the keyboard hand the focus back to
+  the gear; Close with the mouse hands it to no one (a button that holds the keyboard turns Space into a click on
+  itself, and Space pauses the game). A click on the dark outside the box closes it and goes no further; a click inside
+  the box leaves it open. Tab and Shift+Tab go round the dialog and never out to the farm. `#settings` is in
+  `hud._dialogs`, so while it is open the farm's keys (Space, H, M, ...) do nothing.
+- **It will not open over another overlay.** The tutorial and the game-over screen cover the gear, so the mouse cannot
+  reach it, but Tab can, and they have the keyboard first: `open()` does nothing while either is showing. The list is
+  `OVERLAYS` in `settingsMenu.js`; the pause menu of T1.5, or any other full-screen overlay, goes in it. The mode menu
+  has no entry on purpose: it is only up at page load and `main.js` makes the `Hud` and the `SettingsMenu` after it is
+  gone (`#btn-restart` reloads the page), so the two never exist together.
+- **Conditions.** The dig-speed and birthrate rows of the panel are `.slider-row.dev-knob`; `Controls` hides them
+  unless `rules().showConditions`, a new field in each row of `src/modes.js` (false for Zen, true for Survival).
+- **Reduce motion** has a reader already: `hud.js` puts `reduce-motion` on `<body>` while the setting is on, and
+  `body.reduce-motion *` switches off every CSS transition and animation (the panel's slide, the toast's fade, ...) with
+  `!important`. The choice starts from the system's own preference, as T0.4 made it.
+- **Small screens.** Under 480 px wide the rows wrap, name above control, and the box scrolls if the screen is short.
+- `claude.md`'s settings bullet says that a new option also gets a row in the dialog, and the `settingsmenu` check
+  fails if it does not.
 
-1. Add a gear button to `#toolbar` in `index.html` (same markup as `#btn-panel`), title
-   "Settings".
-2. Add a `#settings` dialog (copy the structure/classes of `#tutorial` so it looks the
-   same) with:
-   - Volume slider (0–100) and Mute checkbox
-   - Frame rate: 30 / 60 / Unlimited
-   - Quality: High / Low
-   - Theme select (hidden until T2.3 adds themes)
-   - Show clock checkbox + 24-hour checkbox
-   - Reduce motion checkbox
-   - Text size: 100% / 125% / 150%
-   - Close button
-3. `settingsMenu.js`: `open()`/`close()`; each control reads its value from `settings.get`
-   on open and calls `settings.set` on change.
-4. Register the dialog wherever `hud.js` keeps `this._dialogs` so keyboard shortcuts don't
-   fire while it's open.
-5. In Zen, hide the "Conditions" sliders (dig speed, birth rate) in the side panel — they
-   are developer knobs. Add `showConditions: false` to Zen in `src/modes.js`, `true` for
-   Survival (and Keeper later), and hide the section when false.
+Where it departs from the ticket, and why:
+- **Only the two developer rows are hidden in Zen, not the whole Conditions section.** The section also holds Sim Speed
+  and Auto Tour, which a Zen player may want; the reason the ticket gives (developer knobs) is true of dig speed and
+  birthrate alone.
+- **Four rows are in the dialog but `hidden`: Theme, Show clock, 24-hour and Text size.** The ticket's test for the
+  menu is that every setting changes something at once, and nothing reads these yet (the clock is T2.2, themes T2.3,
+  text size T1.9). A control that does nothing is worse than none. The rows are there, with their `data-setting`, so
+  the settings are stored and shown correctly the day something reads them; whoever gives one an effect takes `hidden`
+  off its row (a comment in `index.html` says so) and adds its key to `TESTED` in the check.
+- **Reduce motion works now, for the page's own CSS.** The ticket lists the checkbox and leaves what it does to T1.9;
+  a checkbox that does nothing is the same problem as above, and one line of CSS gave it something to do. The farm's
+  own motion (the camera's glide, the effects) is still T1.9's.
+- **Not in the ticket, and added:** Esc, the click outside the box, the Tab trap and the focus rules, the chime on the
+  volume slider, `aria-modal`, the small-screen layout, and the dialog refusing to open over another one.
 
-**Done when:** every setting changes something visible or audible immediately and survives
-a reload; `npm test` passes; screenshot of the open menu looks consistent with the tutorial
-dialog.
+Things to know:
+- **Touching a control stores its setting, even at the value it already had** (T1.2's rule for `settings.set`, which
+  is what lets a pick survive a later change of the mode's default). Opening and closing the dialog stores nothing,
+  and the check proves it: a stored frame cap would pin Zen to 30 for good.
+- Nobody has listened to the chime on the volume slider, and nobody has looked at the dialog with a screen reader.
+- Holding Enter on Close past the keyboard's repeat delay closes the dialog, gives the gear the focus, and the repeat
+  opens the dialog again. A tap does not.
+- The dialog's z-index (300) is above the `?debug` frame read-out (250), as the tutorial's is.
+
+Test: a new `settingsmenu` check in `tests/smoke.mjs` (about 11 s; `npm test -- settingsmenu`), with real clicks,
+mouse movements and key presses, as a player makes them:
+- Zen, new colony: nothing is open, nothing is stored, Zen's Conditions panel has Sim Speed and Auto Tour and no
+  dig-speed or birthrate slider, and the toolbar's gear is titled Settings. The gear opens the dialog; at the middle of
+  its Close button, of the panel and of the toolbar, what a click would reach is the dialog or something in it; the
+  focus is on the volume slider, it is marked as a modal dialog, and it shows 60%, unmuted, 30 fps (Zen's own cap),
+  high quality, motion not reduced, with the game loop itself held to 30. Esc closes it with the focus back on the gear
+  and still nothing stored.
+- The dialog shows what is chosen whether it changed before it opened or while it is open, and a click on its title
+  leaves it open. Every setting in `DEFAULTS` has a row, every row a player can see has a test (`TESTED`), and every
+  tested setting has a row that is shown. The three frame-rate buttons carry 30, 60 and 0.
+- Each control and what follows it, at once: the volume slider by a click, by being held and dragged, and by the End,
+  Home and arrow keys (the number beside it, the setting, the master gain of the live audio graph, the pluck on
+  letting go); Mute from the box (the master falls to 0 and rises to the volume again); the three frame rates by
+  clicking and by an arrow key (`gameLoop.fpsCap`); quality (the canvas is half the window's pixels each way, then all
+  of them); Reduce motion from the box and from its label (`body.reduce-motion`, and the panel's slide taking 0 s
+  instead of 0.55 s).
+- Keys and focus: Space, H and M do nothing behind the dialog and work again after Close; Close with the mouse leaves
+  the focus on no button, so that Space still pauses; Tab goes round the dialog and reaches every control, Shift+Tab
+  from the first goes to Close, Enter on Close puts the focus on the gear; a click outside the box closes it without
+  dropping food on the farm behind it (shown by the same click, once the dialog is gone, dropping some).
+- Choices (a muted, unlimited, low-quality, reduced-motion farm) survive a reload: storage holds exactly the five
+  settings chosen; the game loop's cap is the chosen 0 and not Zen's own; the canvas is at low quality; the page is
+  in reduced motion; the dialog shows the choices; unmuting brings the volume that was kept.
+- Survival: all four sliders of the Conditions panel. At 360x640 the dialog fits the screen, nothing sticks out of the
+  box, the page does not scroll sideways, nothing covers it, and Close can be reached and closes it.
+- The gear does not open the dialog over the tutorial (a first visit to Zen) or over the game-over screen (a Survival
+  colony held still while the queen's health is set to 0), and does once each is gone.
+- Screenshots: `settings-menu` and `settings-menu-narrow` in `tests/out/`.
+
+Checked by breaking things: 68 faults were put, one at a time, into a throwaway copy of the repo: in
+`settingsMenu.js`, 35 (Esc doing nothing or not handing the keyboard back to the gear; Tab with no trap, escaping from
+the last stop or on Shift+Tab from the first, or starting at the wrong stop; Close always or never handing the focus
+back, or taking a mouse click for a key press and the other way round; a click outside the box not closing the dialog
+or a click inside it closing it; opening or drawing the dialog storing settings nobody chose; no pluck on letting go
+of the volume; each of the five controls not writing its setting, the volume unscaled in either direction, numbers
+kept as text, no percentage, a radio never checked, no dimming when muted; a dialog that never shows, never hides or
+never takes the keyboard; no redraw when a setting changes elsewhere; a slider that acts only on release; the dialog
+opening over any overlay, refusing to open when none is up, or missing the tutorial or the game-over screen from its
+list); in the readers, 12 (`hud.js`: no listener for reduce motion, none at start, the setting ignored, the dialog not
+among those that stop the farm's keys; `main.js`: the frame cap or the quality ignored, the quality's scale lost, the
+loop seeded with the mode's cap and not the player's, or not seeded, no menu made; `audio.js`: volume or mute
+ignored); in the Conditions rows, 4 (`controls.js` showing or hiding the two developer rows whatever the mode;
+`modes.js` with the rows shown in Zen or hidden in Survival); in the markup, 11 (the four hidden rows shown, a row for
+a setting that is not there, the dialog not marked modal, Unlimited carrying 1, the gear retitled or outside the
+toolbar, the volume's top at 50 or its scale at 10); and in the CSS, 6 (the reduce-motion rule on the wrong selector
+or without `!important`, the dialog under the panel, a hidden dialog shown, the narrow layout without its wrap, a box
+wider than a phone). Every one made `npm test -- settingsmenu` fail with the message written for it; the unbroken copy
+passed. Six did not on the first run, which tried 65 (the other 59 gave the right message). Two were missed outright.
+The mode menu was listed among the overlays the gear must not open over, and the test of it passed with the entry
+removed, because the mode menu is gone before a `SettingsMenu` exists: the entry was dead code, it is out of the list,
+and the game-over screen has taken its place in the test. A loop not seeded with the frame cap at start passed because
+the only start the test looked at was a reload with Unlimited chosen, which is the cap an unseeded loop has: the test
+now wants a new Zen colony's loop at Zen's 30, and a loop seeded with the mode's cap alone is a fault of its own. Four
+were caught, but not by the check written for them. Three only because a click timed out: Unlimited carrying 1 (the
+test now reads the three frame-rate values), the dialog under the panel (it now asks, at the middle of Close, of the
+panel and of the toolbar, what a click would reach, at 1600x900 and at 360x640) and a hidden dialog shown (the test
+now reads whether the dialog is displayed and not what its classes say; two more faults, a dialog that never shows and
+one that never hides, were added to be sure that this change lost nothing). The fourth, a click inside the box closing
+it, showed only as the volume slider's steps failing one after another; a click on the dialog's title, early, now says
+so. All 68 were run again against the tightened check, and every one failed with its own message. Two places were
+judged to behave the same from outside and were not tried, so they are not among the 68: the `_show()` at the end of
+`open()`, since the dialog is redrawn whenever a setting changes, and the one at the end of `_edit()`, which matters
+only if `settings` turns a value down, and no control here offers one it would.
 
 ---
 
@@ -518,13 +616,17 @@ flat.
 `src/app/director.js`.
 
 1. Text size: `:root { --text-scale: 1 }`, multiply the panel/dialog font sizes in
-   `main.css` by it; set it from `settings.textScale` on load and on change.
+   `main.css` by it; set it from `settings.textScale` on load and on change. The control is in
+   the settings dialog already (`#set-row-text` in `index.html`, hidden, writing `textScale`):
+   take `hidden` off it and add `textScale` to `TESTED` in the `settingsmenu` check.
 2. Every button has a `title` and `aria-label`; visible focus outline for keyboard users.
 3. Status bars that rely on red vs green: add a second cue (an icon or a pattern) or use
    blue/orange.
 4. Reduced motion (`settings.reducedMotion`): no camera shake / flashes in `effects.js`;
    the director uses slower, shorter moves (find its pan speed constant in `director.js`
-   and halve it when set).
+   and halve it when set). T1.4 did the page's side: the setting is a checkbox in the settings
+   dialog and `body.reduce-motion` (`hud.js`) switches off every CSS transition and animation.
+   This step is the farm's own motion.
 
 **Done when:** you can start a game, open every dialog and change every setting with the
 keyboard only; `npm test` passes.

@@ -13,6 +13,7 @@ import { Renderer } from './rendering/renderer.js';
 import { Dashboard } from './ui/dashboard.js';
 import { Controls } from './ui/controls.js';
 import { Hud } from './ui/hud.js';
+import { SettingsMenu } from './ui/settingsMenu.js';
 import { GameState } from './gameState.js';
 import { MODES, rules } from './modes.js';
 import { CONFIG } from './config.js';
@@ -215,6 +216,7 @@ const controls = new Controls(camera, world, gameLoop, antSystem);
 const input    = new InputHandler(canvas, camera, world, controls);
 const director = new Director(camera, sim);
 hud = new Hud({ camera, director, gameLoop, renderer, controls, sim });
+new SettingsMenu();
 let frame = 0;
 
 // ── Fast-forward ──────────────────────────────────────────────────────────────
