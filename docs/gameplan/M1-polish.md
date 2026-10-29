@@ -404,6 +404,7 @@ not wake". Three places were judged to behave the same from outside and were not
 120 and not counted as caught: the reset of a layer's schedule when it is not wanted (it differs only in when the
 first event comes after a break shorter than a gap), `{ capture: true }` on the gesture listeners (nothing in the
 game stops an event) and the flag that remembers there is no `AudioContext` (a later try fails in the same way).
+
 ---
 
 ## T1.4 [H] Settings menu UI
