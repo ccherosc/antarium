@@ -522,9 +522,11 @@ body.no-panel #dashboard { transform: translateX(104%); }
 
 #hint.fade { opacity: 0; }
 
-/* Tutorial and settings overlay: the settings dialog is the tutorial's box with rows in it */
+/* Tutorial, settings, pause menu and key list: each dialog is the tutorial's box with other things in it */
 #tutorial,
-#settings {
+#settings,
+#pause,
+#keys {
   position: fixed;
   inset: 0;
   z-index: 300;
@@ -534,7 +536,9 @@ body.no-panel #dashboard { transform: translateX(104%); }
   justify-content: center;
 }
 #tutorial.hidden,
-#settings.hidden { display: none; }
+#settings.hidden,
+#pause.hidden,
+#keys.hidden { display: none; }
 
 .tut-box {
   background: var(--panel);
@@ -699,10 +703,71 @@ body.no-panel #dashboard { transform: translateX(104%); }
 /* the sound is off: the level can't be heard */
 #settings.is-muted #set-row-volume { opacity: 0.45; }
 
+/* Pause menu: a column of buttons, Resume filled like .tut-btn-next */
+.pause-box,
+.keys-box {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.pause-box { max-width: 300px; }
+.keys-box { max-width: 440px; }
+
+.pause-items { display: flex; flex-direction: column; gap: 8px; }
+
+.pause-item {
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.pause-item:hover { border-color: var(--accent); color: var(--text); }
+.pause-item:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+
+.pause-primary {
+  background: var(--accent);
+  border-color: var(--accent2);
+  color: var(--text3);
+}
+.pause-primary:hover { background: #a07040; color: var(--text3); }
+
+.pause-note {
+  min-height: 14px;
+  margin-top: 14px;
+  color: var(--text2);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Key list: the key on the left, what it does on the right */
+.keys-list { margin: 0; }
+.keys-row {
+  display: flex;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 11px;
+}
+.keys-row dt {
+  width: 124px;
+  flex-shrink: 0;
+  color: var(--text3);
+  font-weight: bold;
+}
+.keys-row dd { margin: 0; color: var(--text2); }
+
 @media (max-width: 480px) {
-  .set-box { padding: 24px 20px 20px; }
+  .set-box,
+  .pause-box,
+  .keys-box { padding: 24px 20px 20px; }
   .set-row { flex-wrap: wrap; gap: 4px 12px; padding: 4px 0; }
   .set-name { width: 100%; }
+  .keys-row dt { width: 104px; }
 }
 
 /* Scrollbar for webkit */

@@ -162,6 +162,7 @@
         <div><b>C</b> camera tour · <b>F</b> full screen</div>
         <div><b>H</b> hide panel · <b>0</b> whole farm</div>
         <div><b>Arrows</b> pan · <b>+ −</b> zoom</div>
+        <div><b>Esc</b> menu · <b>?</b> all the keys</div>
       </div>
     </div>
 
@@ -317,6 +318,37 @@
           <div class="set-note">Esc closes</div>
           <div class="tut-actions">
             <button class="tut-btn-next" id="set-close">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause menu — Esc (src/ui/pauseMenu.js). The farm holds still for as long as it is up; Settings and
+         How to play are the other dialogs, and the menu comes back when they close. -->
+    <div id="pause" class="hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+      <div class="tut-box pause-box">
+        <div class="tut-title" id="pause-title">Paused</div>
+        <div class="pause-items">
+          <button class="pause-item pause-primary" id="pause-resume">Resume</button>
+          <button class="pause-item" id="pause-settings">Settings</button>
+          <button class="pause-item" id="pause-save">Save</button>
+          <button class="pause-item" id="pause-howto">How to play</button>
+          <button class="pause-item" id="pause-keys">Keyboard</button>
+          <button class="pause-item" id="pause-leave">Main menu</button>
+        </div>
+        <div class="pause-note" id="pause-note" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <!-- Keyboard help — ? (src/ui/pauseMenu.js builds the rows from SHORTCUTS in src/ui/hud.js) -->
+    <div id="keys" class="hidden" role="dialog" aria-modal="true" aria-labelledby="keys-title">
+      <div class="tut-box keys-box">
+        <div class="tut-title" id="keys-title">Keyboard</div>
+        <dl class="keys-list" id="keys-list"></dl>
+        <div class="tut-footer">
+          <div class="set-note">Esc or ? closes</div>
+          <div class="tut-actions">
+            <button class="tut-btn-next" id="keys-close">Close</button>
           </div>
         </div>
       </div>

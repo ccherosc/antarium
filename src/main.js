@@ -14,6 +14,7 @@ import { Dashboard } from './ui/dashboard.js';
 import { Controls } from './ui/controls.js';
 import { Hud } from './ui/hud.js';
 import { SettingsMenu } from './ui/settingsMenu.js';
+import { PauseMenu } from './ui/pauseMenu.js';
 import { GameState } from './gameState.js';
 import { MODES, rules } from './modes.js';
 import { CONFIG } from './config.js';
@@ -139,6 +140,13 @@ function doSave() {
   return saveGame(GameState.mode, sim);
 }
 
+// The player asked for it (the Save button, the pause menu); the dashboard says how it went
+function saveByHand() {
+  const ok = doSave();
+  updateSaveStatus(ok ? `Saved — Day ${stats.day}` : 'Save failed');
+  return ok;
+}
+
 // ── Game over ─────────────────────────────────────────────────────────────────
 
 function triggerGameOver(cause) {
@@ -216,7 +224,7 @@ const controls = new Controls(camera, world, gameLoop, antSystem);
 const input    = new InputHandler(canvas, camera, world, controls);
 const director = new Director(camera, sim);
 hud = new Hud({ camera, director, gameLoop, renderer, controls, sim });
-new SettingsMenu();
+const settingsMenu = new SettingsMenu();
 let frame = 0;
 
 // ── Fast-forward ──────────────────────────────────────────────────────────────
@@ -304,12 +312,12 @@ on('hatch', e => audio.playSfx('hatch', e));
 if (DEBUG) window.__pa = { sim, gameLoop, camera, renderer, director, hud, GameState, CONFIG, settings, startup, audio };
 
 // Manual save
-document.getElementById('btn-save')?.addEventListener('click', () => {
-  const ok = doSave();
-  updateSaveStatus(ok ? `Saved — Day ${stats.day}` : 'Save failed');
-});
+document.getElementById('btn-save')?.addEventListener('click', saveByHand);
 
-if (!DEBUG) new Tutorial().show(GameState.mode);
+// Made after the fast-forward: until the colony is on screen there is nothing to pause
+const tutorial = new Tutorial();
+if (!DEBUG) tutorial.show(GameState.mode);
+new PauseMenu({ gameLoop, settingsMenu, tutorial, mode: GameState.mode, save: saveByHand });
 
 if (rules().intro) logEvent(rules().intro);
 

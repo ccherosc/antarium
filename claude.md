@@ -28,6 +28,13 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   settings dialog (`#settings` in `index.html`: a control with `data-setting="key"` is all
   `src/ui/settingsMenu.js` needs), `hidden` until something reads the option; the `settingsmenu`
   check in `tests/smoke.mjs` fails for an option with no row and for a visible row it doesn't work.
+* Keys are handled in `Hud._onKey` (`src/ui/hud.js`) and listed in `SHORTCUTS` beside it, which is what
+  the `?` dialog shows: a new key gets a row there, and the `pause` check fails for a key that is handled
+  and not listed, or listed and not handled. Esc and `?` belong to `src/ui/pauseMenu.js` (Esc holds the
+  farm still and gives it back at the speed it had; later tickets add their buttons to `#pause`). A new
+  full-screen dialog goes in `_dialogs` in `hud.js` (the farm's keys stop while it is up) and in
+  `OVERLAYS` in `settingsMenu.js` and `pauseMenu.js` (so none opens over another), and gets its Tab
+  trap from `src/ui/dialogs.js`.
 * Sound is made with WebAudio in `src/audio/`: no sound files. A new effect is a function in `SFX` in
   `audio.js`, played with `playSfx(name)`; what makes a layer louder or quieter is in `mix.js`, and the
   numbers are `AUDIO_*` in `CONFIG`. It is optional: `playSfx` and `updateAudio` do nothing before the

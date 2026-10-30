@@ -15,6 +15,22 @@ const PAN = {
   arrowdown: [0, 1],  s: [0, 1],
 };
 
+// The keys and what they do, as the list that ? opens (pauseMenu.js). Keep it in step with _onKey:
+// the smoke test fails for a key that is handled here and not listed, or listed and not handled.
+export const SHORTCUTS = [
+  ['Space', 'Pause or carry on'],
+  ['[ ]', 'Slower, faster'],
+  ['Arrows, W A S D', 'Move the view'],
+  ['+ −', 'Zoom in, out'],
+  ['0', 'Show the whole farm'],
+  ['H', 'Hide or show the panel'],
+  ['C', 'Start or stop the camera tour'],
+  ['F', 'Full screen'],
+  ['M', 'Sound on or off'],
+  ['Esc', 'Pause menu'],
+  ['?', 'This list'],
+];
+
 // Keys that are none of the farm's business: pressing one must not end the tour
 const QUIET = new Set([
   'shift', 'control', 'alt', 'altgraph', 'meta', 'os', 'capslock', 'numlock', 'scrolllock',
@@ -59,7 +75,7 @@ export class Hud {
     this._hint   = $('hint');
     this._speed  = $('ctrl-speed');
     this._auto   = $('ctrl-auto-camera');
-    this._dialogs = [$('tutorial'), $('gameover'), $('mode-select'), $('settings')].filter(Boolean);
+    this._dialogs = [$('tutorial'), $('gameover'), $('mode-select'), $('settings'), $('pause'), $('keys')].filter(Boolean);
 
     // Reduce motion: the page's own transitions stop (the farm's camera and effects are T1.9's)
     const still = () => document.body.classList.toggle('reduce-motion', settings.get('reducedMotion'));
@@ -337,7 +353,7 @@ export class Hud {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
     if (QUIET.has(k) || /^f\d+$/.test(k)) return;
-    if (this._dialogUp()) return;   // the tutorial has the keyboard
+    if (this._dialogUp()) return;   // a dialog has the keyboard
 
     const t = e.target;
     if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) return;

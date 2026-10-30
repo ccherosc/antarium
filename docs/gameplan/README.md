@@ -78,7 +78,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 - [x] T1.2 [S] Frame cap, power saving, pause when hidden
 - [x] T1.3 [S] Ambient soundscape (WebAudio, driven by the sky)
 - [x] T1.4 [H] Settings menu UI
-- [ ] T1.5 [H] Pause menu (Esc) and keyboard help (?)
+- [x] T1.5 [H] Pause menu (Esc) and keyboard help (?)
 - [ ] T1.6 [H] Title screen polish, credits, version
 - [ ] T1.7 [H] Crash safety: error toast, save on close
 - [ ] T1.8 [S] 8-hour stability pass (fix whatever the soak finds)

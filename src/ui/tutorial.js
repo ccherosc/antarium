@@ -44,17 +44,23 @@ export class Tutorial {
     this._next  = document.getElementById('tut-next');
     this._skip  = document.getElementById('tut-skip');
 
+    this.onClose = null;   // () => it was closed; the pause menu uses this to come back
+
     this._next?.addEventListener('click', () => this._advance());
     this._skip?.addEventListener('click', () => this._done());
     document.addEventListener('keydown', e => {
-      if (this._el?.classList.contains('hidden')) return;
-      if (e.key === 'Escape') this._done();
+      if (!this.isOpen) return;
+      // prevented, so the Esc that closes this is not also the one that opens the pause menu
+      if (e.key === 'Escape') { e.preventDefault(); this._done(); }
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this._advance(); }
     });
   }
 
-  show(mode) {
-    if (localStorage.getItem(STORAGE_KEY)) return;
+  get isOpen() { return !!this._el && !this._el.classList.contains('hidden'); }
+
+  // The first time only, unless asked for (How to play in the pause menu)
+  show(mode, force = false) {
+    if (!force && localStorage.getItem(STORAGE_KEY)) return;
     STEPS[STEPS.length - 1] = MODE_STEPS[mode] ?? MODE_STEPS.screensaver;
     this._step = 0;
     this._render();
@@ -81,7 +87,8 @@ export class Tutorial {
   }
 
   _done() {
-    localStorage.setItem(STORAGE_KEY, '1');
+    try { localStorage.setItem(STORAGE_KEY, '1'); } catch { /* storage is full: it shows again next time */ }
     this._el?.classList.add('hidden');
+    this.onClose?.();
   }
 }

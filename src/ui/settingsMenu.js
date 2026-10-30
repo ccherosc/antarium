@@ -1,9 +1,11 @@
 import { settings } from '../settings.js';
 import { playSfx } from '../audio/audio.js';
+import { keepFocus, overlayUp } from './dialogs.js';
 
 // These cover the gear, so the mouse can't reach it; Tab still can, and they have the keyboard first.
-// (The mode menu is gone before this exists: it is only up at page load.)
-const OVERLAYS = ['tutorial', 'gameover'];
+// (The mode menu is gone before this exists: it is only up at page load. The pause menu hides itself
+// before it opens this.)
+const OVERLAYS = ['tutorial', 'gameover', 'pause', 'keys'];
 
 // The settings dialog (#settings in index.html). Every control names the setting it edits in
 // data-setting: it shows settings.get(...) whenever the dialog opens or a setting changes, and
@@ -12,6 +14,7 @@ const OVERLAYS = ['tutorial', 'gameover'];
 export class SettingsMenu {
   constructor() {
     const $ = id => document.getElementById(id);
+    this.onClose = null;   // () => it was closed; the pause menu uses this to come back
     this._el = $('settings');
     if (!this._el) return;
     this._controls = [...this._el.querySelectorAll('[data-setting]')];
@@ -35,7 +38,7 @@ export class SettingsMenu {
   get isOpen() { return !!this._el && !this._el.classList.contains('hidden'); }
 
   open() {
-    if (!this._el || OVERLAYS.some(id => document.getElementById(id)?.classList.contains('hidden') === false)) return;
+    if (!this._el || overlayUp(OVERLAYS)) return;
     this._show();
     this._el.classList.remove('hidden');
     this._volume?.focus();
@@ -47,6 +50,7 @@ export class SettingsMenu {
     if (!this.isOpen) return;
     this._el.classList.add('hidden');
     if (giveBack) document.getElementById('btn-settings')?.focus();
+    this.onClose?.();
   }
 
   _show() {
@@ -77,20 +81,7 @@ export class SettingsMenu {
       e.preventDefault();
       this.close(true);
     } else if (e.key === 'Tab') {
-      this._keepFocus(e);
-    }
-  }
-
-  // Tab goes round the dialog, never out to the farm behind it
-  _keepFocus(e) {
-    const stops = [...this._el.querySelectorAll('input, select, button')].filter(el => el.offsetParent);
-    const first = stops[0], last = stops[stops.length - 1], at = document.activeElement;
-    if (!this._el.contains(at) || (e.shiftKey && at === first)) {
-      e.preventDefault();
-      (e.shiftKey ? last : first).focus();
-    } else if (!e.shiftKey && at === last) {
-      e.preventDefault();
-      first.focus();
+      keepFocus(this._el, e);
     }
   }
 }

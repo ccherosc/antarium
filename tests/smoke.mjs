@@ -6,8 +6,9 @@
 // resumed one caught up, before the first frame, that the frame cap and low quality save power
 // without changing the colony or the picture, and that the sound stays silent until the first
 // click, follows the sky, mutes, and can never stop the game, and that every control in the
-// settings dialog does what it says, keeps the keyboard to itself and survives a reload.
-// `npm test -- events saves` runs just the named checks (boot, settings, settingsmenu, saves,
+// settings dialog does what it says, keeps the keyboard to itself and survives a reload, and that
+// Esc pauses and resumes exactly where the farm was and ? lists the keys that really work.
+// `npm test -- events saves` runs just the named checks (boot, settings, settingsmenu, pause, saves,
 // events, fastforward, performance, sound, or a mode from src/modes.js). Numbers can pass while
 // the picture is wrong, so always look at the screenshots this writes to tests/out/.
 import fs from 'node:fs';
@@ -33,7 +34,7 @@ const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
 
-const CHECKS = ['boot', 'settings', 'settingsmenu', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
+const CHECKS = ['boot', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
 const only = process.argv.slice(2);   // the checks to run; none named means all of them
 const unknown = only.filter(name => !CHECKS.includes(name));
 if (unknown.length) {
@@ -66,6 +67,30 @@ function watch(page) {
 async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, `${name}.png`) }).catch(() => {});
 }
+
+// Where in the window a click sets food down, for a test that needs one to: open air, since food does not
+// go onto the water that rain leaves in the grass. Left of the middle, clear of the dialogs' boxes.
+const foodSpot = page => page.evaluate(async () => {
+  const { TILE } = await import('/src/config.js');
+  const { camera, sim } = window.__pa, world = sim.world;
+  for (let x = 300; x < 560; x += 10) {
+    const [tx, ty] = camera.screenToTile(x, 450);
+    const i = world._dropTarget(tx, ty);
+    if (i >= 0 && world.tiles[i] === TILE.AIR) return [x, 450];
+  }
+  return [300, 450];
+});
+
+// Why a click on the farm set no food down, when a test expected it to
+const noFoodBecause = (page, x, y) => page.evaluate(async ([x, y]) => {
+  const { TILE } = await import('/src/config.js');
+  const { camera, sim, hud } = window.__pa, world = sim.world;
+  const names = Object.fromEntries(Object.entries(TILE).map(([name, id]) => [id, name]));
+  const [tx, ty] = camera.screenToTile(x, y), i = world._dropTarget(tx, ty);
+  const muted = Math.round(hud.controls.mutedUntil - performance.now());
+  return `; the click was on tile ${tx},${ty}, which drops food on ${i < 0 ? 'nothing' : names[world.tiles[i]]}, the tool is ${hud.controls.activeTool}, `
+    + (muted > 0 ? `and clicks on the farm were muted for another ${muted} ms` : 'and clicks on the farm were not muted');
+}, [x, y]);
 
 // A colony's vital signs, plus how many distinct colours the canvas shows (a blank one has few)
 const inspect = page => page.evaluate(() => {
@@ -571,11 +596,13 @@ async function runSettingsMenu() {
     const food = () => page.evaluate(() => window.__pa.sim.world.foodAmount.reduce((a, b) => a + b, 0));
     await page.click('#btn-settings');
     const fed = await food();
-    await page.mouse.click(300, 450);
+    const [spotX, spotY] = await foodSpot(page);
+    await page.mouse.click(spotX, spotY);
     check(!(await look(page)).open, 'a click outside the box did not close the dialog');
     check(await food() === fed, 'the click that closed the dialog also dropped food on the farm behind it');
-    await page.mouse.click(300, 450);   // the same click, with the dialog gone, feeds the colony: so the check above could have failed
-    check(await food() > fed, 'test setup: a click on the farm dropped no food');
+    await till(page, () => performance.now() >= window.__pa.hud.controls.mutedUntil);   // a click that wakes the farm from a tour is muted for a moment
+    await page.mouse.click(spotX, spotY);   // the same click, with the dialog gone, feeds the colony: so the check above could have failed
+    check(await food() > fed, `test setup: a click on the farm dropped no food${await noFoodBecause(page, spotX, spotY)}`);
     await page.evaluate(speed => window.__pa.gameLoop.setSpeed(speed), speed);
 
     // What a player leaves with: a quiet, frugal farm. It must still be so after a reload.
@@ -658,6 +685,593 @@ async function runSettingsMenu() {
   problems.push(...errors.flat());
   for (const c of contexts) await c.close();
   report('settingsmenu', problems, 'gear, each control and its effect, keys, focus, reload, small screen');
+}
+
+// The pause menu and the key list (T1.5). Esc holds the farm still and Esc again lets it go at the speed
+// it had; Settings, How to play and Keyboard open over the menu and give it back; Save and Main menu keep
+// the colony; ? lists the keys, and the list is held to what the keys do: every row works and no key left
+// out of it does anything. Real keys and clicks, as a player makes them.
+async function runPause() {
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const errors = [];
+  const contexts = [];
+  const till = (page, test, arg) => page.waitForFunction(test, arg, { timeout: 6000 }).catch(() => {});
+  const shown = (page, id) => page.evaluate(id => getComputedStyle(document.getElementById(id)).display !== 'none', id);
+  const word = on => on ? 'open' : 'closed';
+  // What "nothing changed" compares: the speed, the view, the panel, the sound, the tour, whether full
+  // screen was asked for, and which dialogs are up
+  const FIELDS = ['speed', 'zoom', 'x', 'y', 'panel', 'muted', 'touring', 'fullscreen', 'menu', 'keys', 'settings', 'tutorial'];
+  const moved = (a, b) => FIELDS.filter(k => a[k] !== b[k]);
+  // What the listeners that come after the dialogs' make of a key: marked used by whoever took it, or not
+  const watchKeys = page => page.evaluate(() => {
+    window.keysSeen = [];
+    window.addEventListener('keydown', e => window.keysSeen.push(`${e.key} ${e.defaultPrevented ? 'used' : 'unused'}`));
+  });
+  const lastKey = page => page.evaluate(() => window.keysSeen.at(-1));
+
+  // A page of its own, with full screen stubbed so that asking for it can be counted. `before` runs in the
+  // page ahead of the game's own scripts.
+  const visit = async (query, viewport = VIEWPORT, before = null) => {
+    const context = await browser.newContext({ viewport, reducedMotion: 'no-preference' });
+    contexts.push(context);
+    const page = await context.newPage();
+    errors.push(watch(page));
+    await page.addInitScript(() => {
+      window.fullscreenAsked = 0;
+      Element.prototype.requestFullscreen = () => { window.fullscreenAsked++; return Promise.resolve(); };
+    });
+    if (before) await page.addInitScript(before);
+    await page.goto(`${base}${query}`);
+    return page;
+  };
+  // A debug page with the colony on screen. The "founding" overlay is gone (Esc is not for the menu while
+  // it is up), the view has settled, so that an unmoved view is the same numbers, and the tour is off.
+  const fresh = async query => {
+    const page = await visit(query);
+    await page.waitForFunction(() => window.__pa, null, { timeout: 60_000 });
+    await page.waitForSelector('#founding.hidden', { state: 'attached', timeout: 10_000 });
+    await page.evaluate(() => { window.__pa.director.auto = false; });
+    await till(page, () => {
+      const c = window.__pa.camera;
+      return Math.abs(c.inset - c.insetTarget) < 0.5 && (!c.fitted || Math.abs(c.zoom - c.fitZoom()) < 0.002);
+    });
+    return page;
+  };
+  // What the player sees, and what the game is doing about it
+  const look = page => page.evaluate(() => {
+    const { gameLoop, camera, hud, director, settings, sim } = window.__pa;
+    const up = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    return {
+      menu: up('pause'), keys: up('keys'), settings: up('settings'), tutorial: up('tutorial'),
+      note: document.getElementById('pause-note').textContent,
+      focus: document.activeElement?.id || document.activeElement?.tagName,
+      speed: gameLoop.speed, tick: sim.world.tick, time: performance.now(),
+      zoom: camera.zoom, x: camera.x, y: camera.y,
+      panel: hud.panel, muted: settings.get('muted'), touring: director.active, fullscreen: window.fullscreenAsked,
+    };
+  });
+  // A modal has the whole page under it: at the middle of the panel and of the toolbar (where they are on
+  // screen), what a click would reach must be the dialog or in it
+  const covers = (page, id) => page.evaluate(id => {
+    const dialog = document.getElementById(id);
+    return ['dashboard', 'toolbar'].filter(other => {
+      const r = document.getElementById(other).getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+      return x >= 0 && y >= 0 && x < innerWidth && y < innerHeight && !dialog.contains(document.elementFromPoint(x, y));
+    });
+  }, id);
+  // The box of a dialog is whole on the screen, nothing sticks out of it sideways, and its last button can
+  // be reached (the box scrolls if it has to)
+  const fit = (page, box, last) => page.evaluate(([box, last]) => {
+    const el = document.querySelector(box), r = el.getBoundingClientRect();
+    const out = e => e.offsetParent && (e.getBoundingClientRect().left < r.left - 1 || e.getBoundingClientRect().right > r.right + 1);
+    const end = document.getElementById(last);
+    end.scrollIntoView({ block: 'nearest' });
+    const b = end.getBoundingClientRect();
+    return {
+      box: [r.left, r.top, r.right, r.bottom].map(Math.round), win: [innerWidth, innerHeight],
+      wide: document.documentElement.scrollWidth, sideways: el.scrollWidth - el.clientWidth,
+      stray: [...el.querySelectorAll('button, dt, dd')].filter(out).map(e => e.id || e.textContent),
+      reach: end.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)),
+    };
+  }, [box, last]);
+  const checkFit = (f, what) => {
+    check(f.box[0] >= 0 && f.box[1] >= 0 && f.box[2] <= f.win[0] && f.box[3] <= f.win[1],
+      `${what}: the box spans ${f.box.join(', ')} (left, top, right, bottom) on a ${f.win.join('x')} screen`);
+    check(f.wide <= f.win[0] && f.sideways <= 0, `${what}: it scrolls sideways (the page is ${f.wide} wide, the box ${f.sideways}px too wide)`);
+    check(!f.stray.length, `${what}: ${f.stray.join(', ')} stick out of the box`);
+    check(f.reach, `${what}: the last button cannot be reached`);
+  };
+
+  try {
+    // ── Zen: Esc holds the farm still, and Esc again lets it go at the speed it had ──
+    const farm = await fresh('?debug&new&mode=screensaver');
+    let s = await look(farm);
+    let bad;
+    check(!s.menu && !s.keys, 'the pause menu or the key list is up before anyone asked');
+    const help = await farm.evaluate(() => document.querySelector('.dash-help').textContent.replace(/\s+/g, ' '));
+    check(/Esc menu/.test(help) && /\? all the keys/.test(help), `the panel's help says "${help.trim()}", wanted it to tell about Esc and ?`);
+    // With Ctrl, Alt or Meta a key is the browser's or the system's, as it is for the farm's own keys
+    for (const combo of ['Control+Escape', 'Alt+Escape', 'Meta+Escape', 'Control+?', 'Alt+?']) {
+      await farm.keyboard.press(combo);
+      s = await look(farm);
+      check(!s.menu && !s.keys, `${combo} opened the ${s.menu ? 'pause menu' : 'key list'}, wanted keys held with Ctrl, Alt or Meta left alone`);
+    }
+
+    await farm.keyboard.press(']');
+    await farm.keyboard.press(']');
+    s = await look(farm);
+    check(s.speed === 4, `test setup: ] ] left the farm at ${s.speed}×, wanted 4×`);
+    // Esc and ? are used up by the dialogs: the listeners after them, and the browser, are told so
+    await watchKeys(farm);
+    await farm.keyboard.press('Escape');
+    s = await look(farm);
+    const held = s.tick;
+    check(s.menu && !s.keys, `Esc left the pause menu ${word(s.menu)} and the key list ${word(s.keys)}`);
+    check(await lastKey(farm) === 'Escape used', `the listeners after the pause menu saw its Esc as "${await lastKey(farm)}", wanted "Escape used": a key nobody marked used is the browser's too`);
+    check(s.speed === 0, `with the pause menu open the farm runs at ${s.speed}×, wanted it held at 0×`);
+    check(s.focus === 'pause-resume', `the keyboard is on ${s.focus} when the menu opens, wanted Resume`);
+    const over = await covers(farm, 'pause');
+    check(!over.length, `something covers the open pause menu: at the middle of ${over.join(', ')} a click would not reach it`);
+    const marks = await farm.evaluate(() => {
+      const el = id => document.getElementById(id);
+      const mark = id => [el(id).getAttribute('role'), el(id).getAttribute('aria-modal'), el(el(id).getAttribute('aria-labelledby'))?.textContent].join();
+      return { pause: mark('pause'), keys: mark('keys'), items: [...el('pause').querySelectorAll('button')].map(b => b.textContent) };
+    });
+    check(marks.pause === 'dialog,true,Paused', `the pause menu is marked up as "${marks.pause}", wanted a modal dialog titled Paused`);
+    check(marks.keys === 'dialog,true,Keyboard', `the key list is marked up as "${marks.keys}", wanted a modal dialog titled Keyboard`);
+    check(marks.items.filter(t => t !== 'Keyboard').join() === 'Resume,Settings,Save,How to play,Main menu',
+      `the pause menu offers ${marks.items.join(', ')}, wanted Resume, Settings, Save, How to play, Main menu (and Keyboard)`);
+    await shot(farm, 'pause-menu');
+
+    await farm.waitForTimeout(2500);
+    s = await look(farm);
+    check(s.tick === held, `the farm ran ${s.tick - held} ticks behind the open menu, wanted none`);
+    await farm.click('#pause-title');   // the keyboard off Resume: a button that has it turns Space into a click
+    const still = await look(farm);
+    check(still.menu && still.speed === 0, `a click on the title of the menu left it ${word(still.menu)} and the farm at ${still.speed}×, wanted it open and held: only a click outside the box closes it`);
+    for (const key of [' ', 'h', ']', '[', 'm', '+', '-', '0', 'c', 'f', 'ArrowRight', 'd']) await farm.keyboard.press(key);
+    bad = moved(still, await look(farm));
+    check(!bad.length, `keys pressed behind the open menu changed ${bad.join(', ')}`);
+
+    await farm.keyboard.press('Escape');
+    const back = await look(farm);
+    check(!back.menu, 'Esc did not close the pause menu');
+    check(back.speed === 4, `after Esc, Esc the farm runs at ${back.speed}×, wanted the 4× it had`);
+    check(back.focus === 'BODY', `the keyboard is left on ${back.focus} after the menu closes, wanted the page: a button that has it turns Space into a click`);
+    await farm.waitForTimeout(500);
+    s = await look(farm);
+    const ran = s.tick - back.tick, secs = (s.time - back.time) / 1000;
+    check(ran >= 20 && ran <= secs * 250 * 1.5 + 30,
+      `the farm ran ${ran} ticks in the ${secs.toFixed(2)} s after the menu closed; 4× is about ${Math.round(secs * 250)}, so it stood still or made up for the time it was held`);
+    await farm.keyboard.press(' ');
+    check((await look(farm)).speed === 0, 'Space did not pause the farm once the menu was closed');
+
+    // A farm paused by hand stays paused through Esc, Esc; and the menu that was closed opens again
+    await farm.keyboard.press('Escape');
+    check((await look(farm)).menu, 'Esc did not open the pause menu a second time, after it had been opened and closed once');
+    await farm.keyboard.press('Escape');
+    s = await look(farm);
+    check(!s.menu && s.speed === 0, `a farm paused with Space, then Esc, Esc: the menu is ${word(s.menu)} and the farm runs at ${s.speed}×, wanted it closed and still paused`);
+
+    // A click outside the box closes the menu, and is not also a click on the farm behind
+    const food = () => farm.evaluate(() => window.__pa.sim.world.foodAmount.reduce((a, b) => a + b, 0));
+    const [spotX, spotY] = await foodSpot(farm);
+    await farm.keyboard.press('Escape');
+    const fed = await food();
+    await farm.mouse.click(spotX, spotY);
+    s = await look(farm);
+    check(!s.menu && s.speed === 0, `a click outside the menu left it ${word(s.menu)} and the farm at ${s.speed}×, wanted it closed and still paused`);
+    check(await food() === fed, 'the click that closed the menu also dropped food on the farm behind it');
+    await till(farm, () => performance.now() >= window.__pa.hud.controls.mutedUntil);   // a click that wakes the farm from a tour is muted for a moment
+    await farm.mouse.click(spotX, spotY);   // the same click, with the menu gone, feeds the colony: so the check above could have failed
+    check(await food() > fed, `test setup: a click on the farm dropped no food${await noFoodBecause(farm, spotX, spotY)}`);
+    await farm.keyboard.press(' ');
+    check((await look(farm)).speed === 4, 'Space did not carry on at the speed the farm had');
+
+    // A held key sends the same key again, marked as a repeat: it must not undo the press that opened the menu
+    await farm.keyboard.down('Escape');
+    await farm.keyboard.down('Escape');
+    await farm.keyboard.up('Escape');
+    s = await look(farm);
+    check(s.menu && s.speed === 0, `a held Esc left the menu ${word(s.menu)} and the farm at ${s.speed}×: the repeat undid the press that opened it`);
+
+    // Tab goes round the menu and never out to the farm; Enter on Resume and a click on it both let the farm go
+    const order = [];
+    for (let i = 0; i < 7; i++) {
+      await farm.keyboard.press('Tab');
+      order.push((await look(farm)).focus);
+    }
+    check(order.join() === 'pause-settings,pause-save,pause-howto,pause-keys,pause-leave,pause-resume,pause-settings',
+      `Tab went ${order.join(', ')} from Resume, wanted it round the menu and back to Resume`);
+    await farm.focus('#pause-resume');
+    await farm.keyboard.press('Shift+Tab');
+    s = await look(farm);
+    check(s.focus === 'pause-leave', `Shift+Tab from Resume went to ${s.focus}, wanted the last button, Main menu`);
+    // With the keyboard on one of the farm's own controls behind the menu (as when the player tabs back into the page
+    // from the address bar), Tab and Shift+Tab pull it into the menu: the browser's own order would go on to the next
+    // control of the page, or out of it
+    for (const [key, wanted, what] of [['Tab', 'pause-resume', 'the first button, Resume'], ['Shift+Tab', 'pause-leave', 'the last, Main menu']]) {
+      await farm.focus('#btn-zoom-in');
+      await farm.keyboard.press(key);
+      s = await look(farm);
+      check(s.focus === wanted, `${key} with the keyboard on a control of the farm behind the menu went to ${s.focus}, wanted ${what}`);
+    }
+    await farm.focus('#pause-resume');
+    await farm.keyboard.press('Enter');
+    s = await look(farm);
+    check(!s.menu && s.speed === 4 && s.focus === 'BODY',
+      `Enter on Resume left the menu ${word(s.menu)}, the farm at ${s.speed}× and the keyboard on ${s.focus}, wanted it closed, 4× and the keyboard on the page`);
+    await farm.keyboard.press('Escape');
+    await farm.click('#pause-resume');
+    s = await look(farm);
+    check(!s.menu && s.speed === 4, `a click on Resume left the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted it closed and back at 4×`);
+
+    // Settings opens over the menu and gives it back, whichever way it is left; the farm stays held throughout.
+    // The menu puts the keyboard back on its Settings button, but a mouse press on the dark outside the box
+    // takes it off any button once the page has handled it (as it does anywhere on a page): the keyboard is
+    // then on the page, and Tab goes into the menu.
+    for (const [how, leave, keyboard] of [
+      ['Esc', () => farm.keyboard.press('Escape'), 'pause-settings'],
+      ['Close', () => farm.click('#set-close'), 'pause-settings'],
+      ['a click outside the box', () => farm.mouse.click(40, 450), 'BODY'],
+    ]) {
+      await farm.keyboard.press('Escape');
+      await farm.click('#pause-settings');
+      s = await look(farm);
+      check(s.settings && !s.menu && s.speed === 0 && s.focus === 'set-volume',
+        `Settings from the menu: the dialog is ${word(s.settings)}, the menu ${word(s.menu)}, the farm at ${s.speed}× and the keyboard on ${s.focus}; wanted it open over a closed menu, held, on the volume slider`);
+      await leave();
+      s = await look(farm);
+      check(!s.settings && s.menu && s.speed === 0 && s.focus === keyboard,
+        `leaving Settings with ${how}: the dialog is ${word(s.settings)}, the menu ${word(s.menu)}, the farm at ${s.speed}× and the keyboard on ${s.focus}; wanted the menu back, the farm still held and the keyboard on ${keyboard}`);
+      if (keyboard === 'BODY') {
+        await farm.keyboard.press('Tab');
+        s = await look(farm);
+        check(s.focus === 'pause-resume', `Tab from the page, with the menu back after ${how}, went to ${s.focus}, wanted the menu's first button, Resume`);
+      }
+      await farm.keyboard.press('Escape');
+      s = await look(farm);
+      check(!s.menu && !s.settings && s.speed === 4, `Esc after Settings (left with ${how}) left the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted it closed and back at 4×`);
+    }
+    // Settings from the gear is the gear's own: closing it does not bring the menu up
+    await farm.click('#btn-settings');
+    await farm.keyboard.press('?');
+    s = await look(farm);
+    check(s.settings && !s.keys, 'the settings dialog does not keep ? to itself: the key list opened over it');
+    await farm.keyboard.press('Escape');
+    s = await look(farm);
+    check(!s.settings && !s.menu && s.speed === 4, `Settings from the gear, closed with Esc: the menu is ${word(s.menu)} and the farm at ${s.speed}×, wanted the menu closed and the farm untouched`);
+    // ...and with the menu up, the gear can't open it (the mouse can't reach it, Enter on it could)
+    await farm.keyboard.press('Escape');
+    await farm.evaluate(() => document.getElementById('btn-settings').click());
+    s = await look(farm);
+    check(!s.settings && s.menu, 'the settings dialog opened over the pause menu');
+    await farm.keyboard.press('Escape');
+
+    // ── ? lists the keys: from the farm, and from the menu ──
+    await farm.keyboard.press('?');
+    s = await look(farm);
+    check(s.keys && !s.menu, `? left the key list ${word(s.keys)} and the menu ${word(s.menu)}`);
+    check(await lastKey(farm) === '? used', `the listeners after the key list saw its ? as "${await lastKey(farm)}", wanted "? used": a key nobody marked used is the browser's too`);
+    check(s.speed === 0, `with the key list open the farm runs at ${s.speed}×, wanted it held at 0×`);
+    check(s.focus === 'keys-close', `the keyboard is on ${s.focus} when the key list opens, wanted its Close button`);
+    const listOver = await covers(farm, 'keys');
+    check(!listOver.length, `something covers the open key list: at the middle of ${listOver.join(', ')} a click would not reach it`);
+    await farm.evaluate(() => document.getElementById('btn-settings').click());
+    s = await look(farm);
+    check(!s.settings && s.keys, 'the settings dialog opened over the key list');
+    await farm.keyboard.press('Tab');
+    check((await look(farm)).focus === 'keys-close', 'Tab in the key list went out of it');
+    await farm.keyboard.press('Shift+Tab');
+    check((await look(farm)).focus === 'keys-close', 'Shift+Tab in the key list went out of it');
+    await farm.click('#keys-title');   // the keyboard off its Close button, as for the menu above
+    const listStill = await look(farm);
+    for (const key of [' ', 'h', ']', '[', 'm', '+', '-', '0', 'c', 'f', 'ArrowRight', 'd']) await farm.keyboard.press(key);
+    bad = moved(listStill, await look(farm));
+    check(!bad.length, `keys pressed behind the open key list changed ${bad.join(', ')}`);
+    await farm.keyboard.press('Tab');
+    check((await look(farm)).focus === 'keys-close', 'Tab from the page, with the key list up, did not go into it');
+    await farm.focus('#btn-zoom-in');
+    await farm.keyboard.press('Tab');
+    check((await look(farm)).focus === 'keys-close', 'Tab with the keyboard on a control of the farm behind the key list did not go into it');
+    const listed = await farm.evaluate(() => import('/src/ui/hud.js').then(m => m.SHORTCUTS));
+    const rows = await farm.evaluate(() => [...document.querySelectorAll('#keys-list .keys-row')]
+      .map(row => [row.querySelector('dt').textContent, row.querySelector('dd').textContent]));
+    check(JSON.stringify(rows) === JSON.stringify(listed), `the list shows ${rows.length} rows, ${listed.length} keys are listed in hud.js, and they differ`);
+    await shot(farm, 'keys-help');
+    await farm.keyboard.press('?');
+    s = await look(farm);
+    check(!s.keys && !s.menu && s.speed === 4 && s.focus === 'BODY',
+      `? again left the list ${word(s.keys)}, the menu ${word(s.menu)}, the farm at ${s.speed}× and the keyboard on ${s.focus}, wanted it all closed, 4× and the keyboard on the page`);
+    await farm.keyboard.press('?');
+    await farm.keyboard.press('Escape');
+    s = await look(farm);
+    check(!s.keys && !s.menu && s.speed === 4, `Esc in the key list opened from the farm left the list ${word(s.keys)}, the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted it back on the farm at 4×`);
+    // from the menu, closing the list goes back to the menu, however it is closed
+    await farm.keyboard.press('Escape');
+    await farm.click('#pause-keys');
+    s = await look(farm);
+    check(s.keys && !s.menu && s.speed === 0, `Keyboard in the menu left the list ${word(s.keys)}, the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted the list open over a closed menu, held`);
+    await farm.keyboard.press('Enter');   // on its Close button
+    s = await look(farm);
+    check(!s.keys && s.menu && s.speed === 0 && s.focus === 'pause-keys', `Close on the list left it ${word(s.keys)}, the menu ${word(s.menu)}, the farm at ${s.speed}× and the keyboard on ${s.focus}, wanted the menu back on its Keyboard button, held`);
+    await farm.keyboard.press('?');
+    await farm.keyboard.press('Escape');
+    s = await look(farm);
+    check(!s.keys && s.menu && s.speed === 0, `? in the menu, then Esc, left the list ${word(s.keys)}, the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted the menu back, held`);
+    await farm.keyboard.press('?');
+    await farm.mouse.click(40, 450);
+    s = await look(farm);
+    check(!s.keys && s.menu && s.speed === 0, `a click outside the list left it ${word(s.keys)} and the menu ${word(s.menu)}, wanted the menu back, held`);
+    await farm.keyboard.press('Escape');
+    check((await look(farm)).speed === 4, 'after the list, the menu did not let the farm go at 4×');
+
+    // ── Save, and Main menu ──
+    await farm.keyboard.press('Escape');
+    const before = await farm.evaluate(() => Date.now());
+    await farm.click('#pause-save');
+    s = await look(farm);
+    check(s.note === 'Saved' && s.menu && s.speed === 0, `Save left the note "${s.note}", the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted "Saved", the menu open, held`);
+    const dash = page => page.evaluate(() => document.getElementById('save-status').textContent);
+    check(/^Saved/.test(await dash(farm)), `after Save the panel says "${await dash(farm)}", wanted it to say the colony was saved`);
+    const stored = () => farm.evaluate(() => { try { return JSON.parse(localStorage.getItem('pixelants_screensaver'))?.ts; } catch { return null; } });
+    check(await stored() >= before, `after Save the stored colony is from ${await stored()}, wanted one saved at ${before} or later`);
+    await farm.keyboard.press('Escape');
+    await farm.keyboard.press('Escape');
+    check((await look(farm)).note === '', 'the menu still says "Saved" when it is opened again');
+    // The page also saves as it goes hidden, on the way out whatever Main menu did, so a colony stored by then proves
+    // nothing. Each write of the colony is noted with whether the page was still showing: Main menu must have saved first.
+    await farm.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (/screensaver$/.test(key)) set.call(sessionStorage, 'saved-while', `${sessionStorage.getItem('saved-while') ?? ''} ${document.visibilityState}`);
+        return set.call(this, key, value);
+      };
+      sessionStorage.removeItem('saved-while');
+    });
+    const clicked = await farm.evaluate(() => Date.now());
+    await farm.click('#pause-leave');
+    await farm.waitForSelector('#mode-select:not(.hidden)', { timeout: 15_000 })
+      .catch(() => { throw new Error('Main menu did not take the page to the mode menu'); });
+    check(new URL(farm.url()).search === '', `Main menu went to ${farm.url()}, wanted the page without ?debug or ?mode`);
+    check(await farm.evaluate(() => { try { return JSON.parse(localStorage.getItem('pixelants_screensaver'))?.ts; } catch { return null; } }) >= clicked,
+      'Main menu left without saving the colony');
+    const savedWhile = await farm.evaluate(() => sessionStorage.getItem('saved-while') ?? '');
+    check(/visible/.test(savedWhile), `Main menu left without saving the colony before the page went (the colony was written while the page was:${savedWhile || ' never'})`);
+    await farm.context().close();
+
+    // ── The key list: every row is a key that works, and no key left out of it does anything ──
+    const pad = await fresh('?debug&new&mode=screensaver');
+    const rowsOf = await pad.evaluate(() => import('/src/ui/hud.js').then(m => m.SHORTCUTS));
+    const press = async (key, ms = 0) => {
+      await pad.keyboard.down(key);
+      if (ms) await pad.waitForTimeout(ms);
+      await pad.keyboard.up(key);
+    };
+    // [the row, the key, what it must do, how long to hold it, how to tell]. A row of the list with no step
+    // here fails, and so does a step for a row the list does not show. Esc and ? are worked above.
+    const left = (a, b) => b.x < a.x && b.y === a.y, right = (a, b) => b.x > a.x && b.y === a.y;
+    const up = (a, b) => b.y < a.y && b.x === a.x, down = (a, b) => b.y > a.y && b.x === a.x;
+    const ARROWS = 'Arrows, W A S D';
+    const STEPS = [
+      ['Space', ' ', 'pause the farm', 0, (a, b) => a.speed === 1 && b.speed === 0],
+      ['Space', ' ', 'carry on', 0, (a, b) => a.speed === 0 && b.speed === 1],
+      ['[ ]', ']', 'speed the farm up', 0, (a, b) => b.speed > a.speed],
+      ['[ ]', '[', 'slow the farm down', 0, (a, b) => b.speed < a.speed],
+      ['+ −', '+', 'zoom in', 0, (a, b) => b.zoom > a.zoom],
+      ['+ −', '=', 'zoom in', 0, (a, b) => b.zoom > a.zoom],
+      ['+ −', '-', 'zoom out', 0, (a, b) => b.zoom < a.zoom],
+      ['+ −', '_', 'zoom out', 0, (a, b) => b.zoom < a.zoom],
+      [ARROWS, 'ArrowLeft', 'move the view left', 200, left], [ARROWS, 'ArrowRight', 'move the view right', 200, right],
+      [ARROWS, 'ArrowUp', 'move the view up', 200, up], [ARROWS, 'ArrowDown', 'move the view down', 200, down],
+      [ARROWS, 'a', 'move the view left', 200, left], [ARROWS, 'd', 'move the view right', 200, right],
+      [ARROWS, 'w', 'move the view up', 200, up], [ARROWS, 's', 'move the view down', 200, down],
+      ['H', 'h', 'hide the panel', 0, (a, b) => a.panel && !b.panel],
+      ['H', 'h', 'show the panel', 0, (a, b) => !a.panel && b.panel],
+      ['M', 'm', 'turn the sound off', 0, (a, b) => !a.muted && b.muted],
+      ['M', 'm', 'turn the sound on', 0, (a, b) => a.muted && !b.muted],
+      ['F', 'f', 'ask for full screen', 0, (a, b) => b.fullscreen === a.fullscreen + 1],
+      ['C', 'c', 'start the camera tour', 0, (a, b) => !a.touring && b.touring],
+      ['C', 'c', 'stop the camera tour', 0, (a, b) => a.touring && !b.touring],
+    ];
+    const labels = new Set([...STEPS.map(step => step[0]), '0', 'Esc', '?']);
+    for (const [label] of rowsOf) check(labels.has(label), `the key list has a row for ${label} and this test works no such key: add its steps to STEPS`);
+    for (const label of labels) check(rowsOf.some(([row]) => row === label), `this test works the key ${label} and the key list has no row for it`);
+
+    const home = await look(pad);
+    for (const [label, key, does, hold, ok] of STEPS) {
+      const a = await look(pad);
+      await press(key, hold);
+      const b = await look(pad);
+      check(ok(a, b), `${key} (${label} in the list) did not ${does}; it changed ${moved(a, b).join(', ') || 'nothing'}`);
+    }
+    // 0 brings the view back from wherever it has been taken
+    await press('+');
+    await press('+');
+    await press('ArrowLeft', 300);
+    const away = await look(pad);
+    check(away.zoom > home.zoom && away.x < home.x, 'test setup: the view did not move off');
+    await press('0');
+    await till(pad, home => {
+      const c = window.__pa.camera;
+      return Math.abs(c.zoom - home.zoom) < 0.01 && Math.abs(c.x - home.x) < 1 && Math.abs(c.y - home.y) < 1;
+    }, home);
+    s = await look(pad);
+    check(Math.abs(s.zoom - home.zoom) < 0.01 && Math.abs(s.x - home.x) < 1 && Math.abs(s.y - home.y) < 1,
+      `0 left the view at zoom ${s.zoom.toFixed(2)}, x ${s.x.toFixed(0)}, y ${s.y.toFixed(0)}; wanted the whole farm: zoom ${home.zoom.toFixed(2)}, x ${home.x.toFixed(0)}, y ${home.y.toFixed(0)}`);
+
+    // Every other key does nothing. The view is let go first, so that it is not easing back to the whole farm.
+    await pad.evaluate(() => { window.__pa.camera.fitted = false; });
+    const used = new Set([...STEPS.map(step => step[1]), '0', 'Escape', '?']);
+    const spare = [
+      ...Array.from({ length: 94 }, (_, i) => String.fromCharCode(33 + i)).filter(c => c < 'A' || c > 'Z'),   // ! to ~, the capitals being the letters again
+      'Enter', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'Insert',
+    ].filter(key => !used.has(key));
+    let idle = await look(pad);
+    for (const key of spare) {
+      await press(key, 120);
+      const now = await look(pad);
+      const did = moved(idle, now);
+      check(!did.length, `the key ${key} changed ${did.join(', ')} and is not in the key list: add a row for it to SHORTCUTS in hud.js, and work it here`);
+      idle = now;
+    }
+
+    // The tutorial is for a new visitor, once; only How to play (the second argument) shows it to one who has seen it
+    const again = await pad.evaluate(async () => {
+      const { Tutorial } = await import('/src/ui/tutorial.js');
+      const tutorial = new Tutorial(), box = document.getElementById('tutorial');
+      localStorage.setItem('pixelants_tutorial_done', '1');
+      tutorial.show('screensaver');
+      const unasked = !box.classList.contains('hidden');
+      tutorial.show('screensaver', true);
+      return { unasked, asked: !box.classList.contains('hidden') };
+    });
+    check(!again.unasked, 'the tutorial showed itself again to a visitor who had seen it');
+    check(again.asked, 'Tutorial.show(mode, true) did not show the tutorial to a visitor who had seen it');
+    await pad.context().close();
+
+    // ── Survival: the same, at another speed; nothing to pause while a colony is founded or over; small screens ──
+    const hard = await fresh('?debug&new&mode=survival');
+    await hard.keyboard.press('[');
+    s = await look(hard);
+    check(s.speed === 0.5, `test setup: [ left Survival at ${s.speed}×, wanted 0.5×`);
+    await hard.keyboard.press('Escape');
+    s = await look(hard);
+    check(s.menu && s.speed === 0, `Survival: Esc left the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted it open and held`);
+    await hard.keyboard.press('Escape');
+    s = await look(hard);
+    check(!s.menu && s.speed === 0.5, `Survival: Esc, Esc left the menu ${word(s.menu)} and the farm at ${s.speed}×, wanted it closed and back at 0.5×`);
+
+    await hard.evaluate(() => document.getElementById('founding').classList.remove('hidden'));   // as it is while a colony is founded
+    await hard.keyboard.press('Escape');
+    await hard.keyboard.press('?');
+    s = await look(hard);
+    check(!s.menu && !s.keys && s.speed === 0.5, `while the colony was being founded Esc and ? left the menu ${word(s.menu)}, the list ${word(s.keys)} and the farm at ${s.speed}×, wanted nothing to open`);
+    await hard.evaluate(() => document.getElementById('founding').classList.add('hidden'));
+
+    await hard.evaluate(() => { window.__pa.gameLoop.setSpeed(0); window.__pa.sim.queen.health = 0; });   // held still, so no tick heals her before a frame sees her
+    await hard.waitForSelector('#gameover:not(.hidden)', { timeout: 15_000 });
+    await hard.keyboard.press('Escape');
+    await hard.keyboard.press('?');
+    s = await look(hard);
+    check(!s.menu && !s.keys, `at the end of a colony Esc and ? left the menu ${word(s.menu)} and the list ${word(s.keys)}, wanted nothing to open over it`);
+    await hard.evaluate(() => document.getElementById('gameover').classList.add('hidden'));
+    await hard.keyboard.press('Escape');
+    check((await look(hard)).menu, 'test setup: Esc did not open the menu once the end-of-colony screen was gone');
+    // Settings won't open over that screen (it can only come up behind a menu in a game that was not held, but
+    // the menu must not hand the screen to a dialog that isn't there and leave the farm held behind nothing)
+    await hard.evaluate(() => document.getElementById('gameover').classList.remove('hidden'));
+    await hard.click('#pause-settings');
+    s = await look(hard);
+    check(s.menu && !s.settings && s.speed === 0, `Settings that would not open left the menu ${word(s.menu)}, Settings ${word(s.settings)} and the farm at ${s.speed}×, wanted the menu back, held`);
+    await hard.evaluate(() => document.getElementById('gameover').classList.add('hidden'));
+
+    await hard.setViewportSize({ width: 360, height: 640 });
+    await hard.waitForTimeout(400);
+    checkFit(await fit(hard, '.pause-box', 'pause-leave'), 'the pause menu on a 360x640 screen');
+    await shot(hard, 'pause-menu-narrow');
+    await hard.click('#pause-keys');
+    checkFit(await fit(hard, '.keys-box', 'keys-close'), 'the key list on a 360x640 screen');
+    await shot(hard, 'keys-help-narrow');
+    await hard.setViewportSize({ width: 640, height: 300 });
+    await hard.waitForTimeout(400);
+    checkFit(await fit(hard, '.keys-box', 'keys-close'), 'the key list on a 640x300 screen');
+    await hard.keyboard.press('Escape');
+    checkFit(await fit(hard, '.pause-box', 'pause-leave'), 'the pause menu on a 640x300 screen');
+    await hard.context().close();
+
+    // ── The first visit: the tutorial has the keyboard until it is closed, and How to play brings it back ──
+    const intro = await visit('?mode=screensaver');
+    await intro.waitForSelector('#tutorial:not(.hidden)', { timeout: 60_000 });
+    await intro.waitForSelector('#founding.hidden', { state: 'attached', timeout: 10_000 });
+    await watchKeys(intro);
+    await intro.keyboard.press('?');
+    check(!await shown(intro, 'keys') && await shown(intro, 'tutorial'), '? opened the key list over the tutorial');
+    check(await lastKey(intro) === '? unused', `the listeners after the pause menu saw a ? over the tutorial as "${await lastKey(intro)}", wanted "? unused": a key it does not act on is for whoever has the keyboard`);
+    await intro.keyboard.press('Escape');
+    check(!await shown(intro, 'tutorial') && !await shown(intro, 'pause'),
+      `the Esc that closes the tutorial left the tutorial ${word(await shown(intro, 'tutorial'))} and the pause menu ${word(await shown(intro, 'pause'))}, wanted both closed`);
+    check(await intro.evaluate(() => localStorage.getItem('pixelants_tutorial_done')) === '1', 'closing the tutorial did not note that it had been seen');
+    await intro.keyboard.press('Escape');
+    check(await shown(intro, 'pause'), 'Esc did not open the pause menu once the tutorial was closed');
+    await intro.click('#pause-howto');
+    check(await shown(intro, 'tutorial') && !await shown(intro, 'pause'), 'How to play did not show the tutorial again, now that it has been seen');
+    for (let step = 0; step < 12 && await shown(intro, 'tutorial'); step++) {
+      const last = await intro.evaluate(() => document.getElementById('tut-next').textContent === 'Got it');
+      if (last) check(await intro.evaluate(() => document.getElementById('tut-title').textContent) === 'Screensaver mode', "the last step of How to play is not the mode's own");
+      await intro.click('#tut-next');
+    }
+    check(!await shown(intro, 'tutorial') && await shown(intro, 'pause'),
+      `after the last step of How to play the tutorial is ${word(await shown(intro, 'tutorial'))} and the menu ${word(await shown(intro, 'pause'))}, wanted the tutorial closed and the menu back`);
+    await intro.click('#pause-howto');
+    await intro.click('#tut-skip');
+    check(!await shown(intro, 'tutorial') && await shown(intro, 'pause'), 'Skip in How to play did not bring the menu back');
+    await intro.keyboard.press('Escape');
+    check(!await shown(intro, 'pause'), 'Esc did not close the pause menu after How to play');
+    await intro.context().close();
+
+    // A browser that will not keep the note that the tutorial was seen: it still closes
+    const forgetful = await visit('?mode=screensaver', VIEWPORT, () => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'pixelants_tutorial_done') throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        return set.call(this, key, value);
+      };
+    });
+    await forgetful.waitForSelector('#tutorial:not(.hidden)', { timeout: 60_000 });
+    await forgetful.click('#tut-skip');
+    check(!await shown(forgetful, 'tutorial'), 'Skip left the tutorial open in a browser that would not keep the note that it had been seen');
+    await forgetful.context().close();
+
+    // ── Before there is a colony ──
+    const title = await visit('');
+    await title.waitForSelector('#mode-select:not(.hidden)', { timeout: 15_000 });
+    await title.keyboard.press('Escape');
+    await title.keyboard.press('?');
+    check(!await shown(title, 'pause') && !await shown(title, 'keys'), 'Esc or ? opened a dialog on the mode menu, where there is no farm to pause');
+    await title.context().close();
+
+    // ── A browser that will not keep the colony: Save says so, and Main menu asks twice before it leaves ──
+    const broken = await fresh('?debug&new&mode=screensaver');
+    const refusals = errors[errors.length - 1];
+    await broken.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (/screensaver$/.test(key)) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        return set.call(this, key, value);
+      };
+    });
+    await broken.keyboard.press('Escape');
+    await broken.click('#pause-save');
+    s = await look(broken);
+    check(/couldn.t save/i.test(s.note), `Save in a browser that keeps nothing says "${s.note}", wanted it to say it could not`);
+    check(await dash(broken) === 'Save failed', `after a Save that failed the panel says "${await dash(broken)}", wanted "Save failed"`);
+    await broken.click('#pause-leave');
+    await broken.waitForTimeout(600);   // long enough for a page that is leaving to have gone
+    if (new URL(broken.url()).search === '') throw new Error(`Main menu in a browser that keeps nothing went to ${broken.url()}, wanted it to stay and say it asks again`);
+    s = await look(broken);
+    check(s.menu && /again/i.test(s.note),
+      `Main menu in a browser that keeps nothing left the menu ${word(s.menu)} with the note "${s.note}", wanted it open and saying it asks again`);
+    await broken.keyboard.press('Escape');
+    await broken.keyboard.press('Escape');
+    await broken.click('#pause-leave');
+    await broken.waitForTimeout(600);
+    check(new URL(broken.url()).search !== '', 'Main menu left on the first press after the menu had been closed and opened again: the second-press permission was kept');
+    await broken.click('#pause-leave');
+    await broken.waitForSelector('#mode-select:not(.hidden)', { timeout: 15_000 })
+      .catch(() => { throw new Error('the second Main menu did not take the page to the mode menu'); });
+    check(new URL(broken.url()).search === '', `the second Main menu went to ${broken.url()}, wanted the page without ?debug or ?mode`);
+    // The failed saves are the point of this page, so their console errors are not failures
+    const saidSo = refusals.filter(e => e.startsWith('console.error: Save failed')).length;
+    check(saidSo > 0, 'test setup: the saves in the page that keeps nothing did not fail');
+    refusals.splice(0, refusals.length, ...refusals.filter(e => !e.startsWith('console.error: Save failed')));
+  } catch (e) {
+    problems.push(`stopped: ${e.message.split('\n')[0]}`);
+  }
+  problems.push(...errors.flat());
+  for (const c of contexts) await c.close().catch(() => {});
+  report('pause', problems, 'Esc and ?, hold and resume, each button, every key, small screens');
 }
 
 // Saves outlive builds. tests/fixtures/save-v2-screensaver.json is a real save from the build
@@ -2488,6 +3102,7 @@ try {
   if (wanted('boot')) await runBoot();
   if (wanted('settings')) await runSettings();
   if (wanted('settingsmenu')) await runSettingsMenu();
+  if (wanted('pause')) await runPause();
   if (wanted('saves')) await runSaves();
   if (wanted('events')) await runEvents();
   if (wanted('fastforward')) await runFastForward();
