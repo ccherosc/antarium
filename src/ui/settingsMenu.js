@@ -29,7 +29,12 @@ export class SettingsMenu {
 
     $('btn-settings')?.addEventListener('click', () => this.open());
     $('set-close')?.addEventListener('click', e => this.close(e.detail === 0));
-    this._el.addEventListener('mousedown', e => { if (e.target === this._el) this.close(); });
+    // Not taking the keyboard as it goes: the pause menu, if it comes back, has put it on its button
+    this._el.addEventListener('mousedown', e => {
+      if (e.target !== this._el) return;
+      e.preventDefault();
+      this.close();
+    });
     document.addEventListener('keydown', e => this._onKey(e));
     settings.onChange(() => this._show());
     this._show();

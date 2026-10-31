@@ -30,8 +30,10 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   check in `tests/smoke.mjs` fails for an option with no row and for a visible row it doesn't work.
 * Keys are handled in `Hud._onKey` (`src/ui/hud.js`) and listed in `SHORTCUTS` beside it, which is what
   the `?` dialog shows: a new key gets a row there, and the `pause` check fails for a key that is handled
-  and not listed, or listed and not handled. Esc and `?` belong to `src/ui/pauseMenu.js` (Esc holds the
-  farm still and gives it back at the speed it had; later tickets add their buttons to `#pause`). A new
+  and not listed, or listed and not handled. `_onKey` hands Esc and `?` to `key()` in `src/ui/pauseMenu.js`
+  before its dialog guard (Esc holds the farm still and gives it back at the speed it had; the toolbar's
+  `#btn-menu` opens it too, for touch screens; later tickets add their buttons to `#pause`). Keys held with
+  Ctrl, Alt or Meta are the browser's (`chord` in `hud.js`), except AltGr. A new
   full-screen dialog goes in `_dialogs` in `hud.js` (the farm's keys stop while it is up) and in
   `OVERLAYS` in `settingsMenu.js` and `pauseMenu.js` (so none opens over another), and gets its Tab
   trap from `src/ui/dialogs.js`.

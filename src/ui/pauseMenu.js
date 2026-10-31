@@ -2,13 +2,13 @@ import { SHORTCUTS } from './hud.js';
 import { keepFocus, overlayUp } from './dialogs.js';
 
 // With one of these up there is nothing to pause or to list: the colony is being founded or caught up
-// or is gone, or another dialog has the keyboard. (The mode menu is gone before this exists: it is only
-// up at page load.)
-const OVERLAYS = ['tutorial', 'settings', 'gameover', 'founding'];
+// or is gone or not chosen yet, or another dialog has the keyboard
+const OVERLAYS = ['tutorial', 'settings', 'gameover', 'founding', 'mode-select'];
 
-// The pause menu (#pause in index.html) and the key list (#keys). Esc opens the menu and the farm holds
-// still, at the speed it had, until the menu is closed; ? opens the list the same way. Settings and How
-// to play are dialogs of their own: the menu steps aside for them and comes back when they close.
+// The pause menu (#pause in index.html) and the key list (#keys). Esc, or the toolbar's menu button,
+// opens the menu and the farm holds still, at the speed it had, until the menu is closed; ? opens the
+// list the same way. The keys come from Hud._onKey (hud.js), which passes Esc and ? to key(). Settings
+// and How to play are dialogs of their own: the menu steps aside for them and comes back when they close.
 // `save` saves the colony and says whether it worked; `mode` is the one the tutorial tells about.
 export class PauseMenu {
   constructor({ gameLoop, settingsMenu, tutorial, mode, save }) {
@@ -34,9 +34,16 @@ export class PauseMenu {
     on('pause-keys', () => this.openKeys());
     on('pause-leave', () => this._leave());
     on('keys-close', () => this._closeKeys());
-    this._menu.addEventListener('mousedown', e => { if (e.target === this._menu) this.resume(); });
-    this._keys.addEventListener('mousedown', e => { if (e.target === this._keys) this._closeKeys(); });
-    document.addEventListener('keydown', e => this._onKey(e));
+    // A press on the dark outside the box closes it, and does not take the keyboard off the button
+    // that it hands the keyboard back to
+    const outside = (el, close) => el.addEventListener('mousedown', e => {
+      if (e.target !== el) return;
+      e.preventDefault();
+      close();
+    });
+    outside(this._menu, () => this.resume());
+    outside(this._keys, () => this._closeKeys());
+    document.addEventListener('keydown', e => this._onTab(e));
   }
 
   open() {
@@ -73,7 +80,7 @@ export class PauseMenu {
     else this._release();
   }
 
-  _canOpen() { return !this._shown && !overlayUp(OVERLAYS); }
+  _canOpen() { return !!this._menu && !this._shown && !overlayUp(OVERLAYS); }
 
   // The list reads SHORTCUTS, so it can't say anything the keys don't do (hud.js)
   _build(list) {
@@ -144,19 +151,21 @@ export class PauseMenu {
     if (dialog.contains(document.activeElement)) document.activeElement.blur();
   }
 
-  _onKey(e) {
-    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  // Esc or ?, from Hud._onKey. Says whether it was taken; if not, another dialog has the keyboard and
+  // the key is for it.
+  key(e) {
     const shown = this._shown;
-    if (e.key === 'Tab') {
-      if (shown) keepFocus(shown, e);
-    } else if (e.key === 'Escape' || e.key === '?') {
-      if (!shown && !this._canOpen()) return;   // another dialog has the keyboard: Esc is for it
-      e.preventDefault();
-      if (e.repeat) return;                     // a held key must not close what it just opened
-      if (shown === this._keys) this._closeKeys();
-      else if (e.key === '?') this.openKeys();
-      else if (shown) this.resume();
-      else this.open();
-    }
+    if (!shown && !this._canOpen()) return false;
+    e.preventDefault();
+    if (e.repeat) return true;   // a held key must not close what it just opened
+    if (shown === this._keys) this._closeKeys();
+    else if (e.key === '?') this.openKeys();
+    else if (shown) this.resume();
+    else this.open();
+    return true;
+  }
+
+  _onTab(e) {
+    if (e.key === 'Tab' && this._shown && !e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey) keepFocus(this._shown, e);
   }
 }

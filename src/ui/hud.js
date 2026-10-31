@@ -15,14 +15,15 @@ const PAN = {
   arrowdown: [0, 1],  s: [0, 1],
 };
 
-// The keys and what they do, as the list that ? opens (pauseMenu.js). Keep it in step with _onKey:
+// The keys and what they do, as the list that ? opens (pauseMenu.js). Keep it in step with _onKey (which
+// passes Esc and ? on to the pause menu):
 // the smoke test fails for a key that is handled here and not listed, or listed and not handled.
 export const SHORTCUTS = [
   ['Space', 'Pause or carry on'],
   ['[ ]', 'Slower, faster'],
   ['Arrows, W A S D', 'Move the view'],
   ['+ −', 'Zoom in, out'],
-  ['0', 'Show the whole farm'],
+  ['0 (zero)', 'Show the whole farm'],
   ['H', 'Hide or show the panel'],
   ['C', 'Start or stop the camera tour'],
   ['F', 'Full screen'],
@@ -36,6 +37,13 @@ const QUIET = new Set([
   'shift', 'control', 'alt', 'altgraph', 'meta', 'os', 'capslock', 'numlock', 'scrolllock',
   'printscreen', 'contextmenu', 'pause', 'dead', 'unidentified',
 ]);
+
+// With Ctrl, Alt or Meta held a key is the browser's or the system's. AltGr is not one of them, though
+// Windows sends it as Ctrl+Alt: it is how a layout types the third character on a key ([ and ] on a
+// German keyboard, ? on some others).
+function chord(e) {
+  return e.metaKey || ((e.ctrlKey || e.altKey) && !e.getModifierState?.('AltGraph'));
+}
 
 function loadPrefs() {
   let p = null;
@@ -76,6 +84,7 @@ export class Hud {
     this._speed  = $('ctrl-speed');
     this._auto   = $('ctrl-auto-camera');
     this._dialogs = [$('tutorial'), $('gameover'), $('mode-select'), $('settings'), $('pause'), $('keys')].filter(Boolean);
+    this.menu = null;   // the pause menu (pauseMenu.js), which main.js makes once the colony is on screen
 
     // Reduce motion: the page's own transitions stop (the farm's camera and effects are T1.9's)
     const still = () => document.body.classList.toggle('reduce-motion', settings.get('reducedMotion'));
@@ -298,7 +307,18 @@ export class Hud {
     click('btn-tour', () => this.startTour());
     click('btn-panel', () => this.togglePanel());
     click('btn-fullscreen', () => this.toggleFullscreen());
+    click('btn-menu', () => this.menu?.open());
     if (!document.documentElement.requestFullscreen) document.getElementById('btn-fullscreen')?.remove();
+
+    // In full screen the browser takes Esc, to leave it, before the page hears it. Where it lets the page
+    // keep Esc (the keyboard lock of Chrome and Edge) Esc opens the menu as ever, and holding it down
+    // leaves full screen; elsewhere the first Esc leaves full screen and the next opens the menu.
+    document.addEventListener('fullscreenchange', () => {
+      try {
+        if (document.fullscreenElement) navigator.keyboard?.lock?.(['Escape'])?.catch?.(() => {});
+        else navigator.keyboard?.unlock?.();
+      } catch { /* not allowed here */ }
+    });
 
     this._auto?.addEventListener('change', () => {
       this.director.auto = this._auto.checked;
@@ -350,9 +370,11 @@ export class Hud {
   }
 
   _onKey(e) {
-    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.defaultPrevented || chord(e)) return;
     const k = e.key.toLowerCase();
     if (QUIET.has(k) || /^f\d+$/.test(k)) return;
+    // Esc and ? open and close the pause menu and the key list, so they are heard while those are up
+    if ((k === 'escape' || k === '?') && this.menu?.key(e)) return;
     if (this._dialogUp()) return;   // a dialog has the keyboard
 
     const t = e.target;

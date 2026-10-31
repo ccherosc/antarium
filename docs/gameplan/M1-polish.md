@@ -544,13 +544,24 @@ As built (`index.html`, `styles/main.css`, the new `src/ui/pauseMenu.js` and `sr
   z-index 300). It is `role="dialog"` and `aria-modal="true"`, titled Paused, with Resume (the primary button),
   Settings, Save, How to play, Keyboard and Main menu, and a line under them (`#pause-note`, `role="status"`) for what
   Save and Main menu have to say.
-- **Esc.** `PauseMenu` (`pauseMenu.js`) listens on `document`. Opening the menu remembers `gameLoop.speed` and sets it to
-  0; Resume, Esc again and a click on the dark outside the box close it and set the speed back, so a farm at 4× comes
-  back at 4×, one at ½× at ½×, and one paused by hand with Space stays paused. The farm goes on drawing while it is held,
-  as it does when Space pauses it.
+- **Esc.** Like every key of the farm it comes in through `Hud._onKey`, which hands Esc and `?` to `PauseMenu.key()`
+  (`pauseMenu.js`) before it asks whether a dialog is up, since they have to be heard while the menu or the list is up,
+  to close it; `key()` says whether it took the key. Opening the menu remembers `gameLoop.speed` and sets it to 0;
+  Resume, Esc again and a click on the dark outside the box close it and set the speed back, so a farm at 4× comes back
+  at 4×, one at ½× at ½×, and one paused by hand with Space stays paused. The farm goes on drawing while it is held, as it
+  does when Space pauses it.
+- **The toolbar's menu button** (`#btn-menu`, three lines, after the gear, its tip "Menu (Esc)") opens the menu with a
+  click or a tap. It is the way in on a phone or a tablet, which have no Esc. `main.js` gives the menu to the HUD
+  (`hud.menu`), which is how both the button and the keys reach it.
 - **?** opens `#keys`, a dialog of the same kind with one row per entry of `SHORTCUTS`, the table `hud.js` exports
-  (Space, [ ], the arrows and W A S D, + −, 0, H, C, F, M, Esc, ?). The menu's Keyboard button opens it too. Esc, ?,
-  Close and a click outside the box close it back to where it was opened from, the menu or the farm.
+  (Space, [ ], the arrows and W A S D, + −, 0 (written "0 (zero)", since in the panel's font it looks like an O), H, C,
+  F, M, Esc, ?). The menu's Keyboard button opens it too. Esc, ?, Close and a click outside the box close it back to
+  where it was opened from, the menu or the farm.
+- **Full screen.** The browser takes Esc in full screen, to leave it, before the page hears it. So when the page goes
+  full screen it asks to keep Esc (`navigator.keyboard.lock(['Escape'])`, which Chrome and Edge have, and only in full
+  screen) and lets go when it leaves (both on `fullscreenchange` in `hud.js`). There Esc opens the menu as ever, and
+  holding Esc down leaves full screen, as the browser's own notice says. Where there is no lock (Firefox, Safari) the
+  first Esc leaves full screen and the next opens the menu.
 - **Settings and How to play** are dialogs of their own. The menu steps aside for them (`_hand`) and comes back, on the
   button that opened them, when they close, whichever way they are left; the farm stays held in between, and a dialog
   that would not open does not leave the farm held behind nothing. `SettingsMenu` and `Tutorial` each got an `onClose`
@@ -562,14 +573,18 @@ As built (`index.html`, `styles/main.css`, the new `src/ui/pauseMenu.js` and `sr
 - **Main menu** saves first, then goes to `location.pathname`: no `?debug`, no `?mode=`, so the mode menu. If the colony
   cannot be saved (a browser that keeps nothing) the menu says so and leaves only when asked a second time.
 - **Who has the keyboard.** The menu and the list do not open over the tutorial, the settings dialog, the end-of-colony
-  screen or the founding of a colony (`OVERLAYS` in `pauseMenu.js`): Esc is then for whichever of them has it, and `?` is
-  left alone. When they do take a key they mark it used (`preventDefault`), so that the listener of the farm, which comes
-  after, and the browser leave it alone. They do nothing with Ctrl, Alt or Meta held, or for the repeat of a held key.
+  screen, the founding of a colony or the mode menu (`OVERLAYS` in `pauseMenu.js`; the mode menu is gone before the
+  pause menu is made, and is listed so that it stays that way if that ever changes): Esc is then for whichever of them
+  has it, and `?` is left alone. When they do take a key they mark it used (`preventDefault`), so that the browser and the
+  listeners that come after leave it alone. They and the farm's keys do nothing with Ctrl, Alt or Meta held (`chord` in
+  `hud.js`), with one exception: AltGr, which Windows sends as Ctrl+Alt, and which is how a layout types the third
+  character on a key (`[` and `]` on a German keyboard, `?` on some others). The repeat of a held Esc or ? does nothing.
   `Hud._dialogs` includes `#pause` and `#keys`, so the farm's keys (Space, H, M, ...) do nothing behind them. Tab and
   Shift+Tab go round the open dialog and never out to the farm. A dialog opens with the keyboard on its first button
   (Resume, Close) and leaves it on no button when it closes: a button that holds the keyboard turns Space into a click on
   itself, and Space pauses the game. The exception is a dialog that gives the menu back, which hands the keyboard to the
-  button that opened it.
+  button that opened it. A click on the dark outside a box does not take the keyboard as it goes (its `mousedown` is
+  marked used), so that hand-back holds whichever way the dialog was left: Esc, Close or a click outside.
 - **`src/ui/dialogs.js`** holds what the settings dialog and the pause menu both needed: `keepFocus`, the Tab trap, and
   `overlayUp`, which asks whether any of a list of overlays is showing. `settingsMenu.js` uses them in place of its own,
   and `pause` and `keys` are in its `OVERLAYS`.
@@ -577,47 +592,42 @@ As built (`index.html`, `styles/main.css`, the new `src/ui/pauseMenu.js` and `sr
   360×640 both fit.
 - **The panel's help line** says `Esc menu · ? all the keys`.
 - `claude.md` says how the farm's keys and the list are kept together (`SHORTCUTS` and `Hud._onKey`: the `pause` check
-  fails for a key that works and is not listed, and for a key that is listed and does nothing), that Esc and `?` belong
-  to `pauseMenu.js`, and where a new full-screen dialog has to be listed (`Hud._dialogs` and the `OVERLAYS` of the two
-  menus, with its Tab trap from `dialogs.js`).
+  fails for a key that works and is not listed, and for a key that is listed and does nothing), that `_onKey` hands Esc
+  and `?` to `pauseMenu.js`, and where a new full-screen dialog has to be listed (`Hud._dialogs` and the `OVERLAYS` of
+  the two menus, with its Tab trap from `dialogs.js`).
 
 Where it departs from the ticket, and why:
-- **Esc and ? are handled in `pauseMenu.js`, not in `hud.js`'s `_onKey`.** `_onKey` returns at once while a dialog is
-  up, and Esc has to be heard then, to close the dialog; the tutorial and the settings dialog keep their own keys in the
-  same way. `hud.js` holds the table instead.
 - **The list is read from a table beside `_onKey`, not from `_onKey`.** A function's keys cannot be read back without
   parsing its source. `SHORTCUTS` is the list, and the `pause` check ties it to the handler in both directions: it
   presses the key of every row and wants what the row says to happen, and it presses the keys the farm does not use and
   wants nothing to happen. A key added to one and not the other fails the check with the key's name.
-- **The menu has a Keyboard button, which the ticket does not list.** `?` needs Shift, and on some layouts Ctrl or Alt
-  (AltGr), which the menu ignores as the farm's keys do; without the button the list could not be reached from them.
+- **The menu has a Keyboard button, which the ticket does not list.** A touch screen has no `?`, and a Mac layout that
+  types it with Option has it only with Alt held, which the farm leaves to the system; the button reaches the list from
+  the menu on all of them.
 - **No P (photo) row.** It is T2.4's key; that ticket adds the row to `SHORTCUTS` and a step for it to the check, which
   fails for a row it does not work.
 - **Main menu does not always leave.** The ticket saves, then leaves; if the save fails the colony is lost, so the first
   press says so and the second leaves.
 - **Not in the ticket, and added:** the menu stepping aside for Settings and How to play and coming back, the rules
   above for who has the keyboard, the Tab trap and the focus rules, the click outside the box, `aria-modal`, the
-  small-screen layout, the Keyboard button, `dialogs.js`, and the help line in the panel.
-- **`#mode-select` is not in `OVERLAYS`.** The mode menu is up only at page load, and `main.js` makes the menu after it is
-  gone (`#btn-restart` reloads the page), so the two never exist together.
+  small-screen layout, the Keyboard button, the toolbar's menu button, AltGr, the Esc lock in full screen, `dialogs.js`,
+  and the help line in the panel.
 
 Things to know:
-- **Esc is the only way in.** No toolbar button opens the menu, so a phone or a tablet without a keyboard cannot reach
-  it. Whoever does the touch version adds a button that calls `open()` on the `PauseMenu` `main.js` makes (it keeps no
-  reference to it now).
-- **`?` is Shift+/ on a US keyboard.** The Keyboard button is the way in where that fails. No other layout was tried.
-- **Esc, then Space or Enter, presses Resume,** because the keyboard is on it. Enter is in the test; Space is the same
-  thing for a button.
-- **After Settings is left with a click outside its box** the menu comes back with the keyboard on the page, not on a
-  button (the click takes it off any button once the page has handled it); the first Tab goes to Resume.
-- **In the browser's full screen the first Esc is most likely the browser's,** which leaves full screen before the page
-  hears it. Not tried.
+- **Full screen without the lock** (Firefox, Safari): the first Esc leaves full screen and the second opens the menu.
+  Nothing a page can do changes that. The test cannot show the lock at work either: headless Chromium gives the page its
+  Esc in full screen with or without it, so the check shows that the lock is asked for on the way in and let go on the
+  way out, and that Esc in full screen opens the menu and keeps full screen. A real full-screen Chrome was not tried.
+- **Layouts.** AltGr is tested with synthetic key events (a test's keyboard cannot hold AltGr), as Chrome on Windows
+  sends them (Ctrl and Alt set, and `AltGraph` among the modifiers). No real non-US keyboard was tried. A Mac layout
+  that types `[`, `]` or `?` with Option sends them with Alt held and no AltGraph, so the farm leaves them to the system,
+  as it does every Alt key; the toolbar's buttons and the menu's Keyboard button are the way there. Not tried on a Mac.
+- **Esc, then Space or Enter, presses Resume,** because the keyboard is on it. That is meant: Space is the key for
+  carrying on, and the menu's Resume is the same. Enter is in the test; Space is the same thing for a button.
 - **A camera tour ends when the menu opens,** and an auto tour starts again after the usual 20 s with nothing touched,
   counted from when the menu closes (`director.blocked` is true while the loop is held or a dialog is up, and
-  `Director.update` then stops a tour and holds its idle count at 0). Watched once in a browser, and not in the checks:
-  C started a tour, Esc stopped it, it stayed off for as long as the menu was open, and it came back after the idle
-  time (set to 2 s for the probe) once the menu was closed.
-- **The 0 in the key list looks like an O** in the panel's font.
+  `Director.update` then stops a tour and holds its idle count at 0). The `pause` check watches this with the idle time
+  set to 2 s.
 - **The `pause` check names the menu's buttons.** A later ticket that adds one (a Collection button, a link to the full
   version) changes the line of the check that lists them (`the pause menu offers ...`); a version line is not a button
   and changes nothing.
@@ -625,9 +635,11 @@ Things to know:
   mutation workers ran. The cause was not shown; the likeliest is water that rain had left on the tile the click
   reached (food does not go onto it). Both checks now choose a column whose drop tile is air (`foodSpot`), wait out the
   mute that follows a tour, and say what was at the tile if no food falls (`noFoodBecause`). The `settingsmenu` check
-  was touched for this, and nothing else in it.
+  was touched for this, and nothing else in it. Since then it has not come back: 96 colonies probed for it, then 150 runs
+  of the two checks (three copies of the repo side by side, for part of the time beside three mutation workers), all
+  fed. If it comes back, its message says what was on the tile.
 
-Test: a new `pause` check in `tests/smoke.mjs` (about 24 s; `npm test -- pause`), with real key presses, mouse movements
+Test: a new `pause` check in `tests/smoke.mjs` (about 30 s; `npm test -- pause`), with real key presses, mouse movements
 and clicks, as a player makes them:
 - Zen, new colony, tour off: nothing is open, and the panel's help tells about Esc and ?. Esc and ? with Ctrl, Alt or
   Meta held open nothing. At 4× (two presses of `]`), Esc opens the menu: the listeners after it saw the Esc marked used,
@@ -643,8 +655,8 @@ and clicks, as a player makes them:
   after tabbing back into the page from the address bar), Tab goes to Resume and Shift+Tab to Main menu; Enter on
   Resume and a click on it both let the farm go at 4×.
 - Settings from the menu: the dialog opens over it, held, with the keyboard on the volume slider, and the menu is back
-  when it is closed by Esc, by Close and by a click outside its box, the keyboard on the Settings button (after the
-  click, on the page, and Tab goes to Resume); Esc then closes the menu with the farm at 4×. Settings from the gear closes
+  when it is closed by Esc, by Close and by a click outside its box, the keyboard on the Settings button each time; Esc
+  then closes the menu with the farm at 4×. Settings from the gear closes
   without bringing the menu up, and with the menu up the gear cannot open it.
 - ?, from the farm and from the menu: the list opens, the menu is closed, the farm is held, the keyboard is on Close,
   nothing covers it, Tab and Shift+Tab stay inside it, the farm's keys do nothing behind it, and Tab goes into it
@@ -663,15 +675,24 @@ and clicks, as a player makes them:
   unused for it), closing it notes that it was seen, and Esc then opens the menu. How to play shows it again to a
   visitor who has seen it (and the plain `show` does not), its last step is the mode's own, and finishing or skipping
   it brings the menu back. In a browser that will not keep the note that the tutorial was seen, Skip still closes it.
-- Survival, at ½×: the same hold and release. While a colony is being founded (the founding overlay shown) and at the
-  end of one (the queen's health set to 0), Esc and ? open nothing. With the end-of-colony screen up behind a menu,
+- Survival, at ½×: the same hold and release. While a colony is being founded (the founding overlay shown), with the
+  mode menu shown over the farm, and at the end of a colony (the queen's health set to 0), Esc and ? open nothing. With the end-of-colony screen up behind a menu,
   Settings that would not open leave the menu back and the farm held, not held behind nothing.
 - On the mode menu, where there is no farm yet, Esc and ? open nothing.
 - A page whose storage refuses every write: Save says it could not, and the panel says "Save failed". Main menu stays
   and says it asks again; closing the menu and opening it again forgets that permission; the second press leaves.
 - Small screens, 360×640 and 640×300: both boxes are whole on the screen, nothing sticks out of them, the page does not
   scroll sideways, and the last button can be reached.
-- Screenshots: `pause-menu`, `keys-help`, `pause-menu-narrow` and `keys-help-narrow` in `tests/out/`.
+- Without Esc: the toolbar's menu button is labelled Menu with Esc in its tip; a click on it opens the menu, held, with
+  the keyboard on Resume, and Esc closes it. On a 360×640 touch screen a tap on it opens the menu and a tap on Resume
+  closes it at 1×. With AltGr (synthetic key events): Ctrl+Alt+? that is not AltGr opens nothing, AltGr ? opens the list
+  and closes it, and AltGr ] speeds the farm up.
+- Full screen: F asks for the Esc lock once full screen is on, Esc opens the menu and full screen stays, and F again lets
+  the lock go with full screen off.
+- The tour: C starts it, Esc stops it, it stays off with the menu open for longer than the idle time (2 s here), it has
+  not started again the moment the menu closes, and it is back once the idle time has passed.
+- Screenshots: `pause-menu`, `keys-help`, `pause-menu-narrow`, `keys-help-narrow` and `menu-button-phone` in
+  `tests/out/`.
 
 Checked by breaking things: 81 faults were put, one at a time, into a throwaway copy of the repo: in `pauseMenu.js`, 38
 (Esc opening nothing, a held Esc undoing the press that opened the menu, an Esc not marked used, a key already used or
@@ -714,6 +735,20 @@ button and Shift+Tab to the last, where the browser's order goes to the next con
 column's narrow rule had no fault of its own, since the wide one is caught at 640 px and not at 360; one was added (the
 81st). All 81 were run again against the final check, with the unbroken copy as the control in each of the three
 workers that shared the run, and every one failed with its own message.
+
+Then the menu button, AltGr, the full-screen lock, Esc through `Hud._onKey`, the mode menu in `OVERLAYS` and the click
+outside that keeps the keyboard were added, and the faults were run again: 99 of them. Fifteen of the 81 had aimed at
+lines since rewritten and were aimed again at the new ones (two of them, a key already used and a key held with Ctrl or
+Alt, now in `hud.js`). Eighteen are new: in `hud.js`, 11 (Esc not handed to the menu, only Esc handed and not ?, the
+dialog guard ahead of the hand-off, `chord` ignoring every modifier or not excusing AltGr, the menu button not bound, no
+Esc lock, a lock on every key, no unlock, the tour never held, `0 (zero)` written `0`); in `pauseMenu.js` and
+`settingsMenu.js`, 4 (the mode menu left out of `OVERLAYS`, a click outside the menu or the list, or outside Settings,
+taking the keyboard as it goes, the Tab trap asking the wrong way whether a dialog is open); in `main.js`, 1 (the menu
+made and not given to the HUD); in `index.html`, 2 (no menu button, its tip without Esc). 98 failed with their own
+message, with the unbroken copy passing in each of the three workers. The 99th, the menu not taking the keyboard off a
+button it hides, passed: the check read where the keyboard was a frame or more later, and Chromium can take it off a
+hidden button by itself by then (Firefox and Safari do not). The check now also reads it as the press is handled, and
+that fault fails it.
 
 ---
 

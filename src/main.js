@@ -317,7 +317,7 @@ document.getElementById('btn-save')?.addEventListener('click', saveByHand);
 // Made after the fast-forward: until the colony is on screen there is nothing to pause
 const tutorial = new Tutorial();
 if (!DEBUG) tutorial.show(GameState.mode);
-new PauseMenu({ gameLoop, settingsMenu, tutorial, mode: GameState.mode, save: saveByHand });
+hud.menu = new PauseMenu({ gameLoop, settingsMenu, tutorial, mode: GameState.mode, save: saveByHand });
 
 if (rules().intro) logEvent(rules().intro);
 
