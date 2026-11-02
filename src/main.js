@@ -14,6 +14,7 @@ import { Dashboard } from './ui/dashboard.js';
 import { Controls } from './ui/controls.js';
 import { Hud } from './ui/hud.js';
 import { SettingsMenu } from './ui/settingsMenu.js';
+import { TitleScreen } from './ui/titleScreen.js';
 import { PauseMenu } from './ui/pauseMenu.js';
 import { GameState } from './gameState.js';
 import { MODES, rules } from './modes.js';
@@ -123,6 +124,9 @@ function pickMode() {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+// The title has its own Settings button, so the dialog exists before the colony does
+const settingsMenu = new SettingsMenu();
+new TitleScreen({ settingsMenu });
 const shouldLoad = await pickMode();
 const savedTs = shouldLoad ? getSaveInfo(GameState.mode)?.ts : undefined;   // when it was last saved
 
@@ -224,7 +228,6 @@ const controls = new Controls(camera, world, gameLoop, antSystem);
 const input    = new InputHandler(canvas, camera, world, controls);
 const director = new Director(camera, sim);
 hud = new Hud({ camera, director, gameLoop, renderer, controls, sim });
-const settingsMenu = new SettingsMenu();
 let frame = 0;
 
 // ── Fast-forward ──────────────────────────────────────────────────────────────

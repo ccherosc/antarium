@@ -83,7 +83,7 @@ export class Hud {
     this._hint   = $('hint');
     this._speed  = $('ctrl-speed');
     this._auto   = $('ctrl-auto-camera');
-    this._dialogs = [$('tutorial'), $('gameover'), $('mode-select'), $('settings'), $('pause'), $('keys')].filter(Boolean);
+    this._dialogs = [$('tutorial'), $('gameover'), $('mode-select'), $('settings'), $('pause'), $('keys'), $('credits')].filter(Boolean);
     this.menu = null;   // the pause menu (pauseMenu.js), which main.js makes once the colony is on screen
 
     // Reduce motion: the page's own transitions stop (the farm's camera and effects are T1.9's)

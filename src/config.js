@@ -166,6 +166,12 @@ export const CONFIG = {
   AUDIO_SFX_GAP: 0.06,         // seconds between two of the same effect, so a burst of hatchings is not a roar
   AUDIO_TRIM: { wind: 2.5, rain: 1.5 },   // gain that brings each looped layer to a loudness (RMS) of about 0.4 at a layer gain of 1
 
+  // The strip of walking ants along the bottom of the title screen (src/ui/titleScreen.js)
+  TITLE_ANTS: 12,              // how many ants walk along it
+  TITLE_ANT_PIXEL: 5,          // screen pixels to a pixel of the strip, so an ant is 5 by 3 of them
+  TITLE_ANT_SPEED: [14, 30],   // pixels of the strip an ant walks in a second: the slowest and the fastest
+  TITLE_ANT_FPS: 12,           // how often the strip is drawn, which is also how fast the legs move
+
   MIN_ZOOM: 0.18,
   MAX_ZOOM: 10,
 

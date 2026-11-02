@@ -7,8 +7,9 @@
 // without changing the colony or the picture, and that the sound stays silent until the first
 // click, follows the sky, mutes, and can never stop the game, and that every control in the
 // settings dialog does what it says, keeps the keyboard to itself and survives a reload, and that
-// Esc pauses and resumes exactly where the farm was and ? lists the keys that really work.
-// `npm test -- events saves` runs just the named checks (boot, settings, settingsmenu, pause, saves,
+// Esc pauses and resumes exactly where the farm was and ? lists the keys that really work, and that the
+// title shows the version, opens Settings and Credits, and walks its ants.
+// `npm test -- events saves` runs just the named checks (boot, title, settings, settingsmenu, pause, saves,
 // events, fastforward, performance, sound, or a mode from src/modes.js). Numbers can pass while
 // the picture is wrong, so always look at the screenshots this writes to tests/out/.
 import fs from 'node:fs';
@@ -18,6 +19,7 @@ import { chromium } from 'playwright';
 import { serve } from '../tools/serve.mjs';
 import { MODES as MODE_TABLE } from '../src/modes.js';
 import { CONFIG, STATE } from '../src/config.js';
+import { VERSION } from '../src/version.js';
 import { fastForward } from '../src/app/fastForward.js';
 import { GameLoop } from '../src/app/gameLoop.js';
 import { Camera } from '../src/app/camera.js';
@@ -34,7 +36,7 @@ const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
 
-const CHECKS = ['boot', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
+const CHECKS = ['boot', 'title', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
 const only = process.argv.slice(2);   // the checks to run; none named means all of them
 const unknown = only.filter(name => !CHECKS.includes(name));
 if (unknown.length) {
@@ -338,6 +340,117 @@ async function runSettings() {
 // sound changes with it at once; the choices come back after a reload; and the dialog is a proper
 // modal: the farm's keys and clicks stay behind it and Tab stays inside it. Real clicks and keys, as
 // a player makes them.
+// The title screen: the version, the modes by the name the player sees, Settings and Credits from it, and
+// the strip of ants along its foot, which walks, stands when the player wants less motion, and stops with the title
+async function runTitle() {
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const errors = [];
+  const contexts = [];
+  const visit = async (reducedMotion = 'no-preference') => {
+    const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, reducedMotion });
+    contexts.push(context);
+    const page = await context.newPage();
+    errors.push(watch(page));
+    await page.goto(`${base}?debug`);   // no mode in the address: the title stays up
+    await page.waitForSelector('#ms-ants');
+    return page;
+  };
+  const strip = page => page.evaluate(() => document.getElementById('ms-ants').toDataURL());
+  const shown = (page, id) => page.evaluate(id => getComputedStyle(document.getElementById(id)).display !== 'none', id);
+  const focus = page => page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName);
+  const info = [];
+  try {
+    const page = await visit();
+    await page.waitForTimeout(600);
+    const t = await page.evaluate(() => ({
+      version: document.querySelector('#mode-select .ms-version')?.textContent,
+      cards: [...document.querySelectorAll('#ms-pick .ms-btn-name')].map(el => el.textContent),
+      pitches: [...document.querySelectorAll('#ms-pick .ms-btn-pitch')].map(el => el.textContent.trim()),
+      text: document.getElementById('mode-select').innerText,
+      strip: document.getElementById('ms-ants').width,
+      wide: document.documentElement.scrollWidth > innerWidth,
+    }));
+    check(t.version === `v${VERSION}`, `the title shows "${t.version}", wanted v${VERSION}`);
+    check(t.cards.join() === 'Zen,Survival', `the mode cards are ${t.cards.join(', ')}, wanted Zen, Survival`);
+    check(t.pitches.every(Boolean) && t.pitches.length === 2, 'a mode card has no one-line pitch');
+    check(!/screensaver/i.test(t.text), 'the title still says Screensaver');
+    check(t.strip > 100, `the strip of ants is ${t.strip} pixels wide`);
+    check(!t.wide, 'the title makes the page scroll sideways');
+    await shot(page, 'title');
+
+    // the ants walk
+    const a = await strip(page);
+    await page.waitForTimeout(500);
+    const b = await strip(page);
+    check(a !== b, 'the ants along the foot of the title stand still');
+
+    // Settings, from the title: over it, and the keyboard goes back to the button
+    await page.click('#btn-title-settings');
+    check(await shown(page, 'settings'), 'Settings on the title opened nothing');
+    check(await page.evaluate(() => {
+      const r = document.getElementById('set-close').getBoundingClientRect();
+      return document.getElementById('settings').contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+    }), 'the settings dialog is under the title');
+    await page.keyboard.press('Escape');
+    check(!(await shown(page, 'settings')), 'Esc did not close the settings opened from the title');
+    check((await focus(page)) === 'btn-title-settings', `after Settings from the title the keyboard is on ${await focus(page)}, wanted btn-title-settings`);
+    check(await shown(page, 'mode-select'), 'closing Settings took the title away');
+
+    // Credits: Esc, the Close button and a click outside close it; the keyboard goes back after the keys
+    const credits = await page.evaluate(() => document.getElementById('credits').textContent);
+    check(/John Such/.test(credits) && /JavaScript/.test(credits) && /v\d/.test(credits), 'the credits lack the name, the tools or the version');
+    await page.click('#btn-title-credits');
+    check(await shown(page, 'credits'), 'Credits opened nothing');
+    check((await focus(page)) === 'credits-close', `Credits opened with the keyboard on ${await focus(page)}`);
+    await shot(page, 'credits');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    check((await focus(page)) === 'credits-close', `Tab left the credits for ${await focus(page)}`);
+    await page.keyboard.press('Escape');
+    check(!(await shown(page, 'credits')), 'Esc did not close the credits');
+    check((await focus(page)) === 'btn-title-credits', `after Esc the keyboard is on ${await focus(page)}, wanted btn-title-credits`);
+    await page.click('#btn-title-credits');
+    await page.click('#credits-close');
+    check(!(await shown(page, 'credits')), 'the Close button did not close the credits');
+    await page.click('#btn-title-credits');
+    await page.mouse.click(8, 8);
+    check(!(await shown(page, 'credits')), 'a click outside did not close the credits');
+    await page.focus('#btn-title-credits');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');   // on the Close button now
+    check(!(await shown(page, 'credits')) && (await focus(page)) === 'btn-title-credits', `Enter on Close left the keyboard on ${await focus(page)}`);
+
+    // Choosing a mode ends the title, and the strip with it; the pause menu shows the version too
+    await page.click('#btn-mode-screensaver');
+    await page.waitForFunction(() => window.__pa, null, { timeout: 60_000 });
+    check(!(await shown(page, 'mode-select')), 'the title stayed up after choosing a mode');
+    const c = await strip(page);
+    await page.waitForTimeout(500);
+    check(c === (await strip(page)), 'the strip of ants carries on drawing under the farm');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('pause')).display !== 'none', null, { timeout: 3000 }).catch(() => {});
+    const v = await page.evaluate(() => document.querySelector('#pause .pause-version')?.textContent);
+    check(v === `v${VERSION}`, `the pause menu shows "${v}", wanted v${VERSION}`);
+    const badge = await page.evaluate(() => document.getElementById('dashboard').innerText);
+    check(!/screensaver/i.test(badge), 'the dashboard still says Screensaver');
+
+    // Less motion: the ants are drawn once and stand
+    const still = await visit('reduce');
+    await still.waitForTimeout(400);
+    const s1 = await strip(still);
+    await still.waitForTimeout(500);
+    check(s1 === (await strip(still)), 'the ants walk for a player who wants less motion');
+    check(await still.evaluate(() => document.getElementById('ms-ants').getContext('2d').getImageData(0, 7, 400, 1).data.some(x => x > 0)), 'with less motion the strip was not drawn at all');
+    info.push('title, credits, version, ants');
+  } catch (e) {
+    problems.push(`stopped: ${e.message}`);
+  }
+  problems.push(...errors.flat());
+  for (const c of contexts) await c.close();
+  report('title', problems, info.join(', '));
+}
+
 async function runSettingsMenu() {
   // The settings whose control is worked below. A control that is shown and is not in here fails the
   // check: a row with no effect behind it belongs in the dialog hidden (the note in index.html)
@@ -1290,7 +1403,7 @@ async function runPause() {
     check(await shown(intro, 'tutorial') && !await shown(intro, 'pause'), 'How to play did not show the tutorial again, now that it has been seen');
     for (let step = 0; step < 12 && await shown(intro, 'tutorial'); step++) {
       const last = await intro.evaluate(() => document.getElementById('tut-next').textContent === 'Got it');
-      if (last) check(await intro.evaluate(() => document.getElementById('tut-title').textContent) === 'Screensaver mode', "the last step of How to play is not the mode's own");
+      if (last) check(await intro.evaluate(() => document.getElementById('tut-title').textContent) === 'Zen mode', "the last step of How to play is not the mode's own");
       await intro.click('#tut-next');
     }
     check(!await shown(intro, 'tutorial') && await shown(intro, 'pause'),
@@ -3191,6 +3304,7 @@ async function runSound() {
 
 try {
   if (wanted('boot')) await runBoot();
+  if (wanted('title')) await runTitle();
   if (wanted('settings')) await runSettings();
   if (wanted('settingsmenu')) await runSettingsMenu();
   if (wanted('pause')) await runPause();

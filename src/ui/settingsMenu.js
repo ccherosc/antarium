@@ -3,9 +3,9 @@ import { playSfx } from '../audio/audio.js';
 import { keepFocus, overlayUp } from './dialogs.js';
 
 // These cover the gear, so the mouse can't reach it; Tab still can, and they have the keyboard first.
-// (The mode menu is gone before this exists: it is only up at page load. The pause menu hides itself
-// before it opens this.)
-const OVERLAYS = ['tutorial', 'gameover', 'pause', 'keys'];
+// (The title is under this, not over it: it is z-indexed below. The pause menu hides itself before it
+// opens this.)
+const OVERLAYS = ['tutorial', 'gameover', 'pause', 'keys', 'credits'];
 
 // The settings dialog (#settings in index.html). Every control names the setting it edits in
 // data-setting: it shows settings.get(...) whenever the dialog opens or a setting changes, and
@@ -42,19 +42,22 @@ export class SettingsMenu {
 
   get isOpen() { return !!this._el && !this._el.classList.contains('hidden'); }
 
-  open() {
+  // opener: the button that asked, if not the gear (the title screen has its own); the keyboard goes back to it
+  open(opener = null) {
     if (!this._el || overlayUp(OVERLAYS)) return;
+    this._opener = opener;
     this._show();
     this._el.classList.remove('hidden');
     this._volume?.focus();
   }
 
-  // giveBack: put the keyboard back on the gear. Not after a mouse click: a button that has the
-  // keyboard turns Space into a click on itself, and Space is the pause key.
+  // giveBack: put the keyboard back on the gear (or what opened this). Not after a mouse click: a button
+  // that has the keyboard turns Space into a click on itself, and Space is the pause key.
   close(giveBack = false) {
     if (!this.isOpen) return;
     this._el.classList.add('hidden');
-    if (giveBack) document.getElementById('btn-settings')?.focus();
+    if (giveBack) (this._opener ?? document.getElementById('btn-settings'))?.focus();
+    this._opener = null;
     this.onClose?.();
   }
 

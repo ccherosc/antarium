@@ -27,7 +27,7 @@ const MODE_STEPS = {
     body: 'The queen can die. If food or water hits zero, her health falls fast. Drop supplies regularly, boost foragers in the ROLES panel, and watch the Ant News for critical warnings.',
   },
   screensaver: {
-    title: 'Screensaver mode',
+    title: 'Zen mode',
     body: 'Sit back. Leave the mouse alone for a few seconds and the camera sets off on a tour of the nest by itself; move it to take over again. F is full screen, C starts or stops the tour, H hides the panel.',
   },
 };

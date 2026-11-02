@@ -4,7 +4,7 @@ import { GameState } from './gameState.js';
 // A new mode is a new row here — never test GameState.mode in the simulation or the UI.
 export const MODES = {
   screensaver: {
-    label: 'Screensaver', badge: 'SCREENSAVER', cls: '',   // what the player sees; cls styles the badge
+    label: 'Zen', badge: 'ZEN', cls: '',   // what the player sees; cls styles the badge
     lifespanMult: 1.5,        // ants live this many times longer
     noStarvation: true,       // ants never starve to death
     queenHealthFloor: 5,      // the queen's health never drops below this

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Pixel Ants</title>
-  <meta name="description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Choose Screensaver mode to relax or Survival mode to keep the queen alive.">
+  <meta name="description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Choose Zen to relax or Survival to keep the queen alive.">
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
@@ -15,7 +15,7 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="Pixel Ants">
-  <meta property="og:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Screensaver or survival — you choose.">
+  <meta property="og:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Zen or survival — you choose.">
   <meta property="og:image" content="og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -23,7 +23,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Pixel Ants">
-  <meta name="twitter:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Screensaver or survival — you choose.">
+  <meta name="twitter:description" content="Watch a pixel ant colony dig tunnels, hatch eggs, and survive underground. Zen or survival — you choose.">
   <meta name="twitter:image" content="og-image.png">
 
   <link rel="stylesheet" href="styles/main.css">
@@ -34,7 +34,7 @@
 
     <div id="dashboard">
       <div class="dash-title">PIXEL ANTS</div>
-      <div class="dash-mode" id="stat-mode">SCREENSAVER</div>
+      <div class="dash-mode" id="stat-mode">ZEN</div>
       <div class="dash-day" id="stat-day">DAY 1</div>
       <div class="dash-sky" id="stat-sky">MORNING · CLEAR</div>
 
@@ -203,16 +203,23 @@
     <div id="mode-select">
 
       <div id="ms-pick">
-        <div class="ms-title">PIXEL ANTS</div>
-        <div class="ms-sub">pixel ant farm simulation</div>
+        <div class="ms-logo">
+          <svg class="ms-ant" viewBox="0 0 15 9" aria-hidden="true" shape-rendering="crispEdges">
+            <path d="M0 3h5v3H0zM1 2h3v1H1zM1 6h3v1H1zM5 4h1v1H5zM6 3h3v3H6zM9 4h1v1H9zM10 3h3v3h-3zM13 2h1v1h-1zM14 1h1v1h-1zM13 6h1v1h-1zM14 7h1v1h-1zM6 2h1v1H6zM5 1h1v1H5zM8 2h1v1H8zM9 1h1v1H9zM6 6h1v1H6zM5 7h1v1H5zM8 6h1v1H8zM9 7h1v1H9z"/>
+          </svg>
+          <div class="ms-title">PIXEL ANTS</div>
+        </div>
+        <div class="ms-sub">a living ant farm for your screen</div>
         <div class="ms-options">
           <button class="ms-btn" id="btn-mode-screensaver">
-            <div class="ms-btn-name">Screensaver</div>
-            <div class="ms-btn-desc">Watch your colony thrive indefinitely. The queen cannot die. Perfect for leaving on display.</div>
+            <div class="ms-btn-name">Zen</div>
+            <div class="ms-btn-pitch">A living ant farm for your screen.</div>
+            <div class="ms-btn-desc">The queen cannot die. Leave it running for hours: there is always something to watch.</div>
           </button>
           <button class="ms-btn ms-btn-survival" id="btn-mode-survival">
             <div class="ms-btn-name">Survival</div>
-            <div class="ms-btn-desc">Keep your colony alive. The queen can perish. Food runs out. How many days can you last?</div>
+            <div class="ms-btn-pitch">Keep them alive.</div>
+            <div class="ms-btn-desc">The queen can perish and the food runs out. How many days can you last?</div>
           </button>
         </div>
       </div>
@@ -232,6 +239,13 @@
           </button>
         </div>
       </div>
+
+      <div class="ms-links">
+        <button class="ms-link" id="btn-title-settings">Settings</button>
+        <button class="ms-link" id="btn-title-credits">Credits</button>
+      </div>
+      <div class="ms-version" data-version></div>
+      <canvas id="ms-ants" aria-hidden="true"></canvas>
 
     </div>
 
@@ -340,6 +354,7 @@
           <button class="pause-item" id="pause-leave">Main menu</button>
         </div>
         <div class="pause-note" id="pause-note" role="status" aria-live="polite"></div>
+        <div class="pause-version" data-version></div>
       </div>
     </div>
 
@@ -352,6 +367,23 @@
           <div class="set-note">Esc or ? closes</div>
           <div class="tut-actions">
             <button class="tut-btn-next" id="keys-close">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Credits — from the title screen (src/ui/titleScreen.js) -->
+    <div id="credits" class="hidden" role="dialog" aria-modal="true" aria-labelledby="credits-title">
+      <div class="tut-box credits-box">
+        <div class="tut-title" id="credits-title">Credits</div>
+        <div class="credits-role">Game by</div>
+        <div class="credits-name">John Such</div>
+        <p class="credits-text">Made with plain JavaScript and Canvas: no engine, no libraries.</p>
+        <p class="credits-text">Every sound, the wind, the rain and the birds, is made in your browser as you listen. There are no recordings.</p>
+        <div class="tut-footer">
+          <div class="set-note">Esc closes · <span data-version></span></div>
+          <div class="tut-actions">
+            <button class="tut-btn-next" id="credits-close">Close</button>
           </div>
         </div>
       </div>

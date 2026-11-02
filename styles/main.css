@@ -255,7 +255,7 @@ body.no-panel #dashboard { transform: translateX(104%); }
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(8,5,2,0.97);
+  background: #080502;   /* solid: the farm's panels are behind it and would show through */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -263,6 +263,12 @@ body.no-panel #dashboard { transform: translateX(104%); }
   gap: 18px;
 }
 #mode-select.hidden { display: none; }
+#ms-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
 
 /* Founding / catching up: the same dark cover as the menu, under the tutorial. src/main.js
    fades it out (FF_FADE_MS) and then hides it. */
@@ -295,27 +301,42 @@ body.no-panel #dashboard { transform: translateX(104%); }
 .ms-resume-label { font-size: 10px; letter-spacing: 3px; color: var(--accent2); }
 .ms-resume-info  { font-size: 12px; color: var(--text3); letter-spacing: 1px; margin-bottom: 8px; }
 
-.ms-title {
-  font-size: 36px;
-  font-weight: bold;
-  letter-spacing: 10px;
-  color: var(--glow);
-  text-shadow: 0 0 24px rgba(106,173,204,0.55);
+.ms-logo {
+  display: flex;
+  align-items: center;
+  gap: 22px;
 }
+.ms-ant {
+  width: 90px;
+  height: 54px;
+  fill: var(--accent2);
+  filter: drop-shadow(0 0 10px rgba(200,140,60,0.45));
+}
+.ms-title {
+  font-size: 56px;
+  font-weight: bold;
+  letter-spacing: 14px;
+  color: var(--glow);
+  text-shadow: 3px 3px 0 #0a1a24, 0 0 28px rgba(106,173,204,0.55);
+}
+#ms-confirm .ms-title { font-size: 36px; letter-spacing: 10px; text-shadow: 0 0 24px rgba(106,173,204,0.55); }
 .ms-sub {
-  font-size: 10px;
-  letter-spacing: 4px;
+  font-size: 11px;
+  letter-spacing: 5px;
   color: var(--text2);
-  opacity: 0.6;
-  margin-bottom: 12px;
+  opacity: 0.7;
+  margin-bottom: 18px;
 }
 .ms-options {
   display: flex;
-  gap: 20px;
+  gap: 24px;
 }
 .ms-btn {
-  width: 230px;
-  padding: 22px 20px;
+  width: 270px;
+  padding: 24px 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   background: var(--panel2);
   border: 1px solid var(--border);
   color: var(--text);
@@ -326,19 +347,69 @@ body.no-panel #dashboard { transform: translateX(104%); }
   transition: all 0.18s;
 }
 .ms-btn:hover { border-color: var(--accent2); background: #2a1e10; }
+.ms-btn:focus-visible,
+.ms-link:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
 .ms-btn-survival:hover { border-color: #c84830; }
 .ms-btn-name {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: bold;
   color: var(--text3);
-  letter-spacing: 2px;
-  margin-bottom: 10px;
+  letter-spacing: 3px;
+  margin-bottom: 8px;
 }
 .ms-btn-survival .ms-btn-name { color: #e06040; }
+.ms-btn-pitch {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 10px;
+}
 .ms-btn-desc {
   font-size: 10px;
   color: var(--text2);
   line-height: 1.7;
+}
+
+/* Settings and Credits, small, under the cards; the version and the walking ants along the foot of the screen */
+.ms-links { display: flex; gap: 12px; margin-top: 10px; }
+.ms-link {
+  padding: 7px 16px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.ms-link:hover { border-color: var(--accent); color: var(--text); }
+.ms-version {
+  position: absolute;
+  right: 16px;
+  bottom: 40px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text2);
+  opacity: 0.6;
+}
+#ms-ants {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .ms-options { flex-direction: column; gap: 12px; }
+  .ms-btn { width: min(300px, calc(100vw - 48px)); padding: 16px 18px; }
+  .ms-logo { flex-direction: column; gap: 12px; }
+  .ms-title { font-size: 34px; letter-spacing: 8px; }
+  .ms-ant { width: 60px; height: 36px; }
+  .ms-sub { letter-spacing: 2px; text-align: center; padding: 0 16px; }
 }
 
 /* Save button */
@@ -522,11 +593,12 @@ body.no-panel #dashboard { transform: translateX(104%); }
 
 #hint.fade { opacity: 0; }
 
-/* Tutorial, settings, pause menu and key list: each dialog is the tutorial's box with other things in it */
+/* Tutorial, settings, pause menu, key list and credits: each dialog is the tutorial's box with other things in it */
 #tutorial,
 #settings,
 #pause,
-#keys {
+#keys,
+#credits {
   position: fixed;
   inset: 0;
   z-index: 300;
@@ -538,7 +610,8 @@ body.no-panel #dashboard { transform: translateX(104%); }
 #tutorial.hidden,
 #settings.hidden,
 #pause.hidden,
-#keys.hidden { display: none; }
+#keys.hidden,
+#credits.hidden { display: none; }
 
 .tut-box {
   background: var(--panel);
@@ -736,6 +809,15 @@ body.no-panel #dashboard { transform: translateX(104%); }
 }
 .pause-primary:hover { background: #a07040; color: var(--text3); }
 
+.pause-version {
+  margin-top: 8px;
+  color: var(--text2);
+  opacity: 0.6;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
 .pause-note {
   min-height: 14px;
   margin-top: 14px;
@@ -744,6 +826,12 @@ body.no-panel #dashboard { transform: translateX(104%); }
   line-height: 1.5;
   text-align: center;
 }
+
+/* Credits: who made it, then how */
+.credits-role { font-size: 10px; letter-spacing: 3px; color: var(--text2); }
+.credits-name { font-size: 16px; font-weight: bold; color: var(--text3); letter-spacing: 2px; margin: 4px 0 16px; }
+.credits-text { margin: 0 0 10px; font-size: 11px; line-height: 1.7; color: var(--text2); }
+.credits-box .tut-footer { margin-top: 18px; }
 
 /* Key list: the key on the left, what it does on the right */
 .keys-list { margin: 0; }

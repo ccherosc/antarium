@@ -752,7 +752,38 @@ that fault fails it.
 
 ---
 
-## T1.6 [H] Title screen polish, credits, version
+## T1.6 [H] Title screen polish, credits, version — DONE
+
+As built (`index.html`, `styles/main.css`, the new `src/version.js` and `src/ui/titleScreen.js`; also `src/config.js`,
+`src/main.js`, `src/modes.js`, `src/ui/settingsMenu.js`, `src/ui/pauseMenu.js`, `src/ui/hud.js`, `src/ui/tutorial.js`,
+`manifest.json`, `tests/smoke.mjs` and `claude.md`):
+- **The title.** `#mode-select` is now a solid dark cover (it was 97% and the farm's panels showed through). The logo is a
+  small pixel ant (inline SVG, `shape-rendering="crispEdges"`) beside PIXEL ANTS with a glow, a line under it, and two
+  cards, Zen and Survival, each with a one-line pitch and its longer description. Keeper's card comes with T4.1. Under the
+  cards are small Settings and Credits buttons, `v0.9.0` at the bottom right and, along the foot, the strip of ants. It
+  holds at 390 px wide: the cards stack and the logo goes above the name.
+- **Zen.** `MODES.screensaver.label` is `Zen` and `badge` `ZEN`; the dashboard default, the first tutorial page, the
+  page and share descriptions and `manifest.json` say it too. The id stays `screensaver`, so saves are untouched.
+- **Version.** `src/version.js` holds `VERSION`; `TitleScreen` writes `v0.9.0` into every element with `data-version`
+  (the title, the pause menu and the credits). Bump it in `version.js` alone.
+- **Settings from the title.** The gear is under the title, so the title has its own Settings button. `SettingsMenu` is
+  now made before the title is shown (`main.js`) and `open(opener)` remembers the button that asked: closing it with the
+  keyboard puts the keyboard back there, and on the gear as before when nothing was given.
+- **Credits.** `#credits` is a dialog like the others (shares their overlay rule, `role="dialog"`, Tab trap from
+  `dialogs.js`; in `Hud._dialogs` and in the `OVERLAYS` of the settings and pause menus): "Game by John Such", "Made
+  with plain JavaScript and Canvas: no engine, no libraries", and that every sound is made in the browser. There are no
+  recordings, so no sound credits. Esc, Close and a click outside close it; the keyboard goes back to the Credits button
+  after a key, not after a click.
+- **The ants.** `#ms-ants` is a canvas one strip-pixel to `TITLE_ANT_PIXEL` screen pixels (`CONFIG`: `TITLE_ANTS`,
+  `TITLE_ANT_PIXEL`, `TITLE_ANT_SPEED`, `TITLE_ANT_FPS`), twelve ants of five by three of them, every third carrying food,
+  on a strip of soil. It draws at 12 a second, stops when the title is hidden, and with reduced motion is drawn once and
+  stands.
+- **Test.** A new `title` check (`npm test -- title`, 1920×1080): the version, the cards' names and pitches, nothing
+  still called Screensaver, the ants walking, Settings from the title (over it, Esc, the keyboard back on its button),
+  Credits (contents, focus on Close, the Tab trap, Esc, Close, a click outside, Enter), the strip stopped once a mode is
+  chosen, the version in the pause menu, and the ants standing for a player who wants less motion. Six faults were put in
+  to see it fail; five fail it. The sixth, the early stop for reduced motion, only redraws the same picture, so nothing
+  on screen differs.
 
 **Files:** `index.html` (`#mode-select`), `styles/main.css`, new `src/version.js`.
 

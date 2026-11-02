@@ -42,6 +42,8 @@ unticked ticket, and read ONLY that milestone's file. Do one ticket at a time.
   numbers are `AUDIO_*` in `CONFIG`. It is optional: `playSfx` and `updateAudio` do nothing before the
   first click or when WebAudio is missing, and anything that throws inside them is caught (`guard`), so
   never call the audio context from anywhere else in the frame.
+* The release number is `VERSION` in `src/version.js`: bump it there and nowhere else (the title, the pause menu and
+  the credits fill every `data-version` element from it).
 * If you change what a save contains, follow the save rules in `src/saveLoad.js` (bump
   VERSION and add a migration) so existing colonies still load. `tests/fixtures/` holds a real
   old save that `npm test` must keep resuming.
