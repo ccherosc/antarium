@@ -598,7 +598,8 @@ body.no-panel #dashboard { transform: translateX(104%); }
 #settings,
 #pause,
 #keys,
-#credits {
+#credits,
+#crash {
   position: fixed;
   inset: 0;
   z-index: 300;
@@ -611,7 +612,9 @@ body.no-panel #dashboard { transform: translateX(104%); }
 #settings.hidden,
 #pause.hidden,
 #keys.hidden,
-#credits.hidden { display: none; }
+#credits.hidden,
+#crash.hidden { display: none; }
+#crash { z-index: 400; }   /* over every other dialog */
 
 .tut-box {
   background: var(--panel);
@@ -826,6 +829,9 @@ body.no-panel #dashboard { transform: translateX(104%); }
   line-height: 1.5;
   text-align: center;
 }
+
+/* The snag dialog */
+.crash-text { margin: 0 0 10px; font-size: 12px; line-height: 1.7; color: var(--text2); }
 
 /* Credits: who made it, then how */
 .credits-role { font-size: 10px; letter-spacing: 3px; color: var(--text2); }

@@ -8,8 +8,9 @@
 // click, follows the sky, mutes, and can never stop the game, and that every control in the
 // settings dialog does what it says, keeps the keyboard to itself and survives a reload, and that
 // Esc pauses and resumes exactly where the farm was and ? lists the keys that really work, and that the
-// title shows the version, opens Settings and Credits, and walks its ants.
-// `npm test -- events saves` runs just the named checks (boot, title, settings, settingsmenu, pause, saves,
+// title shows the version, opens Settings and Credits, and walks its ants, and that a tick or a frame that
+// throws stops the loop with the colony saved and a dialog whose Reload resumes it.
+// `npm test -- events saves` runs just the named checks (boot, title, crash, settings, settingsmenu, pause, saves,
 // events, fastforward, performance, sound, or a mode from src/modes.js). Numbers can pass while
 // the picture is wrong, so always look at the screenshots this writes to tests/out/.
 import fs from 'node:fs';
@@ -36,7 +37,7 @@ const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
 
-const CHECKS = ['boot', 'title', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
+const CHECKS = ['boot', 'title', 'crash', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
 const only = process.argv.slice(2);   // the checks to run; none named means all of them
 const unknown = only.filter(name => !CHECKS.includes(name));
 if (unknown.length) {
@@ -340,6 +341,112 @@ async function runSettings() {
 // sound changes with it at once; the choices come back after a reload; and the dialog is a proper
 // modal: the farm's keys and clicks stay behind it and Tab stays inside it. Real clicks and keys, as
 // a player makes them.
+// Crash safety: a tick or a frame that throws stops the loop and puts up the snag dialog with the colony saved,
+// Reload resumes it, nothing saves it again after that, and the page saves itself when it is left
+async function runCrash() {
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const contexts = [];
+  // What the game logs on purpose, and what the page reports of the errors thrown to cause it
+  const ON_PURPOSE = /Test crash|Test rejection|hit a snag|Unhandled rejection/;
+  const seen = [];
+  const open = async (context, query) => {
+    const page = await context.newPage();
+    const own = watch(page);
+    seen.push(own);
+    await page.goto(`${base}${query}`);
+    await page.waitForFunction(() => window.__pa, null, { timeout: 60_000 });
+    await page.evaluate(() => { window.__pa.director.auto = false; });
+    return page;
+  };
+  const snag = page => page.evaluate(() => ({
+    up: getComputedStyle(document.getElementById('crash')).display !== 'none',
+    text: document.getElementById('crash').innerText,
+    focus: document.activeElement?.id,
+    running: window.__pa.gameLoop.running,
+    pause: getComputedStyle(document.getElementById('pause')).display !== 'none',
+    save: localStorage.getItem('pixelants_screensaver'),
+    tick: window.__pa.sim.world.tick,
+    ants: window.__pa.sim.antSystem.population,
+    time: window.__pa.sim.sky.time,
+  }));
+  const dialog = (page, ms = 4000) => page.waitForFunction(() => getComputedStyle(document.getElementById('crash')).display !== 'none', null, { timeout: ms }).then(() => true, () => false);
+  const info = [];
+  try {
+    const context = await browser.newContext({ viewport: VIEWPORT, reducedMotion: 'no-preference' });
+    contexts.push(context);
+
+    // A tick that throws. (Not ?new: that starts the colony afresh at every load, Reload included.)
+    const page = await open(context, '?debug&mode=screensaver');
+    await page.waitForTimeout(600);
+    check((await snag(page)).running, 'the loop was not running before the error');
+    check(!(await snag(page)).up, 'the snag dialog was up before any error');
+    await page.evaluate(() => { window.__pa.sim.world.update = () => { throw new Error('Test crash: tick'); }; });
+    check(await dialog(page), 'a tick that threw put up no dialog');
+    const a = await snag(page);
+    check(!a.running, 'the loop carried on after a tick threw');
+    check(/colony was saved/i.test(a.text) && /Reload/.test(a.text), `the dialog says "${a.text.replace(/\n+/g, ' / ')}"`);
+    check(a.focus === 'crash-reload', `the keyboard is on ${a.focus}, wanted crash-reload`);
+    check(!!a.save, 'the colony was not saved when the tick threw');
+    await shot(page, 'crash');
+    // nothing gets past it: Esc does not open the pause menu, Tab stays in the dialog, and the page does not save over it
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Tab');   // one press: with one button to stop at, going out and back would hide a leak
+    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(1200);
+    const b = await snag(page);
+    check(!b.pause, 'Esc opened the pause menu over the snag dialog');
+    check(b.focus === 'crash-reload', `Tab left the snag dialog for ${b.focus}`);
+    check(b.save === a.save, 'the colony was saved again after it had thrown');
+    check(b.tick === a.tick, 'the colony went on ticking after it had thrown');
+
+    // Reload resumes it
+    await page.click('#crash-reload');
+    await page.waitForFunction(() => window.__pa && window.__pa.sim.world.tick > 0 && getComputedStyle(document.getElementById('crash')).display === 'none', null, { timeout: 60_000 });
+    const r = await snag(page);
+    // the tick count is not saved; the sky and the ants are, and a few seconds is all that has passed
+    check(Math.abs(r.time - a.time) < 0.05, `after Reload the sky is at ${r.time}, was at ${a.time}`);
+    check(Math.abs(r.ants - a.ants) <= 3 + a.ants * 0.1, `after Reload the colony has ${r.ants} ants, had ${a.ants}`);
+    check(r.ants > 0, 'after Reload the colony has no ants');
+    check(!(await snag(page)).up, 'the snag dialog was still up after Reload');
+    info.push(`resumed with ${r.ants} ants`);
+    await page.close();
+
+    // A frame that throws, and one that throws once the colony has been playing a while
+    const page2 = await open(context, '?debug&mode=screensaver');
+    await page2.waitForTimeout(400);
+    await page2.evaluate(() => { window.__pa.renderer.render = () => { throw new Error('Test crash: frame'); }; });
+    check(await dialog(page2), 'a frame that threw put up no dialog');
+    check(!(await snag(page2)).running, 'the loop carried on after a frame threw');
+    await page2.close();
+
+    // A promise nobody caught: not worth stopping a running colony for, worth a word when it is not running
+    const page3 = await open(context, '?debug&mode=screensaver');
+    await page3.evaluate(() => { Promise.reject(new Error('Test rejection: running')); });
+    await page3.waitForTimeout(500);
+    const c = await snag(page3);
+    check(!c.up && c.running, 'a stray rejection stopped a colony that was running');
+    await page3.evaluate(() => { window.__pa.gameLoop.stop(); Promise.reject(new Error('Test rejection: stopped')); });
+    check(await dialog(page3), 'a stray rejection with the loop stopped put up no dialog');
+    await page3.close();
+
+    // Leaving the page saves it
+    const page4 = await open(context, '?debug&mode=screensaver');
+    const before = (await snag(page4)).save;
+    await page4.waitForTimeout(1500);
+    await page4.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    const after = (await snag(page4)).save;
+    check(!!after && after !== before, 'pagehide did not save the colony');
+    await page4.close();
+    info.push('tick, frame, rejection, pagehide');
+  } catch (e) {
+    problems.push(`stopped: ${e.message}`);
+  }
+  problems.push(...seen.flat().filter(m => !ON_PURPOSE.test(m)));
+  for (const c of contexts) await c.close();
+  report('crash', problems, info.join(', '));
+}
+
 // The title screen: the version, the modes by the name the player sees, Settings and Credits from it, and
 // the strip of ants along its foot, which walks, stands when the player wants less motion, and stops with the title
 async function runTitle() {
@@ -3305,6 +3412,7 @@ async function runSound() {
 try {
   if (wanted('boot')) await runBoot();
   if (wanted('title')) await runTitle();
+  if (wanted('crash')) await runCrash();
   if (wanted('settings')) await runSettings();
   if (wanted('settingsmenu')) await runSettingsMenu();
   if (wanted('pause')) await runPause();

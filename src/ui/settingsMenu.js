@@ -5,7 +5,7 @@ import { keepFocus, overlayUp } from './dialogs.js';
 // These cover the gear, so the mouse can't reach it; Tab still can, and they have the keyboard first.
 // (The title is under this, not over it: it is z-indexed below. The pause menu hides itself before it
 // opens this.)
-const OVERLAYS = ['tutorial', 'gameover', 'pause', 'keys', 'credits'];
+const OVERLAYS = ['tutorial', 'gameover', 'pause', 'keys', 'credits', 'crash'];
 
 // The settings dialog (#settings in index.html). Every control names the setting it edits in
 // data-setting: it shows settings.get(...) whenever the dialog opens or a setting changes, and

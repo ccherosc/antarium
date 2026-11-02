@@ -3,7 +3,7 @@ import { keepFocus, overlayUp } from './dialogs.js';
 
 // With one of these up there is nothing to pause or to list: the colony is being founded or caught up
 // or is gone or not chosen yet, or another dialog has the keyboard
-const OVERLAYS = ['tutorial', 'settings', 'gameover', 'founding', 'mode-select', 'credits'];
+const OVERLAYS = ['tutorial', 'settings', 'gameover', 'founding', 'mode-select', 'credits', 'crash'];
 
 // The pause menu (#pause in index.html) and the key list (#keys). Esc, or the toolbar's menu button,
 // opens the menu and the farm holds still, at the speed it had, until the menu is closed; ? opens the

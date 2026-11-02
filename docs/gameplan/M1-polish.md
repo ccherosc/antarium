@@ -805,7 +805,32 @@ As built (`index.html`, `styles/main.css`, the new `src/version.js` and `src/ui/
 
 ---
 
-## T1.7 [H] Crash safety
+## T1.7 [H] Crash safety — DONE
+
+As built (`src/app/gameLoop.js`, `src/main.js`, the new `src/ui/crashDialog.js`; also `index.html`, `styles/main.css`,
+`src/ui/hud.js`, `src/ui/pauseMenu.js`, `src/ui/settingsMenu.js`, `tests/smoke.mjs`):
+- **Where the catch is.** In `GameLoop._tick`, not in the two callbacks in `main.js`: one `try/catch` round the whole step
+  (the ticks and the frame) means every user of the loop is covered, and a throw leaves the frame loop unscheduled instead
+  of repeating at 60 a second behind a frozen picture. It stops the loop and calls `gameLoop.onError(e)`. The fast-forward
+  has its own catch (T1.1) and is untouched.
+- **What it does.** `crash(e)` in `main.js`, once only: logs, stops the loop, saves (`doSave()`, in its own try/catch,
+  not when the colony is already over) and shows `#crash`, a dialog "The colony hit a snag" with Reload. It says "Your
+  colony was saved." only if the save went through, and otherwise that the last save is still there. The dialog is
+  `role="alertdialog"`, over every other dialog (z-index 400), takes the keyboard on Reload, traps Tab, and is in
+  `Hud._dialogs` and in the `OVERLAYS` of the pause and settings menus, so Esc opens nothing over it.
+- **Nothing saves it twice.** After a crash `autoSave` does nothing (the 60 s timer, a hidden tab, `pagehide`): a colony
+  that threw may be in a worse state than the save taken as it did.
+- **Rejections.** `unhandledrejection` logs, and shows the dialog only when the loop was started and is no longer running
+  (and the colony is not over). A stray rejection under a running loop, such as a sound that will not start, does not
+  stop the farm.
+- **pagehide.** `autoSave` also runs on `pagehide` (mobile browsers and the back-forward cache do not always send
+  `visibilitychange` first); it is `autoSave` rather than `doSave` so a finished colony's deleted save is not brought back.
+- **Test.** A new `crash` check (`npm test -- crash`): a tick that throws (`world.update`), and a frame that throws
+  (`renderer.render`), each put up the dialog with the loop stopped; the dialog's text, focus, Esc, Tab, no further save
+  and no further ticks; Reload resumes the same sky and ants; a stray rejection leaves a running colony alone and shows the
+  dialog for a stopped one; `pagehide` saves. Nine faults were put in; eight fail it. The ninth, `stop()` in the loop's
+  catch, is also done by `crash()`. Note: `?debug&new` starts afresh at every load, Reload included, so the check
+  opens the page without `new`. `npm run perf` is unchanged.
 
 **File:** `src/main.js`.
 

@@ -15,6 +15,7 @@ import { Controls } from './ui/controls.js';
 import { Hud } from './ui/hud.js';
 import { SettingsMenu } from './ui/settingsMenu.js';
 import { TitleScreen } from './ui/titleScreen.js';
+import { CrashDialog } from './ui/crashDialog.js';
 import { PauseMenu } from './ui/pauseMenu.js';
 import { GameState } from './gameState.js';
 import { MODES, rules } from './modes.js';
@@ -324,8 +325,34 @@ hud.menu = new PauseMenu({ gameLoop, settingsMenu, tutorial, mode: GameState.mod
 
 if (rules().intro) logEvent(rules().intro);
 
+// ── Crash safety ──────────────────────────────────────────────────────────────
+
+// The loop stops at the first thing a tick or a frame throws (GameLoop._tick). The colony is saved once, the
+// player is told, and nothing saves it again: a colony that threw may be in a worse state than its last save.
+const crashDialog = new CrashDialog();
+let crashed = false;
+let looping = false;   // the loop has been started, so one that is not running has stopped
+
+function crash(e) {
+  if (crashed) return;
+  crashed = true;
+  console.error('The colony hit a snag:', e);
+  gameLoop.stop();
+  let saved = false;
+  try { saved = !GameState.over && doSave(); } catch (err) { console.error('...and could not be saved:', err); }
+  try { crashDialog.show(saved); } catch (err) { console.error(err); }
+}
+gameLoop.onError = crash;
+
+// A promise that failed with nobody listening. Usually nothing the colony needs (a sound that would not start), so
+// the player is only stopped for it when the loop is no longer running to say anything itself.
+window.addEventListener('unhandledrejection', e => {
+  console.error('Unhandled rejection:', e.reason);
+  if (looping && !gameLoop.running && !GameState.over) crash(e.reason);
+});
+
 function autoSave() {
-  if (GameState.over) return;   // the save was deleted with the colony; don't bring it back
+  if (GameState.over || crashed) return;   // the save was deleted with the colony, or the colony is not to be trusted
   if (doSave()) updateSaveStatus(`Auto-saved — Day ${stats.day}`);
 }
 
@@ -333,5 +360,8 @@ function autoSave() {
 // likely to be closed, and the browser stops drawing it anyway
 setInterval(autoSave, 60_000);
 document.addEventListener('visibilitychange', () => { if (document.hidden) autoSave(); });
+// Closing the tab or leaving the page: visibilitychange is not always sent first (mobile browsers, the back-forward cache)
+window.addEventListener('pagehide', autoSave);
 
+looping = true;
 gameLoop.start();

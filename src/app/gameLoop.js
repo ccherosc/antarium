@@ -2,6 +2,7 @@ export class GameLoop {
   constructor(onUpdate, onRender) {
     this.onUpdate = onUpdate;
     this.onRender = onRender;
+    this.onError = null;    // called with what a tick or a frame threw; the loop has stopped by then
     this.running = false;
     this._lastTime = 0;
     this._raf = null;
@@ -26,6 +27,18 @@ export class GameLoop {
 
   _tick(now) {
     if (!this.running) return;
+    // A throw stops the loop rather than repeating at 60 a second behind a frozen screen
+    try {
+      this._step(now);
+    } catch (e) {
+      this.stop();
+      this.onError?.(e);
+      return;
+    }
+    this._raf = requestAnimationFrame(this._tick.bind(this));
+  }
+
+  _step(now) {
     const dt = Math.min(now - this._lastTime, 100);
     this._lastTime = now;
 
@@ -49,7 +62,6 @@ export class GameLoop {
       // How far into the next tick this frame falls, so movement can be drawn in between
       this.onRender(this.speed > 0 ? this.simAccum / this.SIM_STEP : 1, frameMs);
     }
-    this._raf = requestAnimationFrame(this._tick.bind(this));
   }
 
   // Frames are due 1000 / fpsCap ms apart, on a schedule of their own rather than counted from the
