@@ -92,6 +92,16 @@ M1–M5 can be interleaved; the order below is the recommended one.
 - [ ] T2.5 [S] Seasons
 - [ ] T2.6 [S] Director: cut to every story beat
 - [ ] T2.7 [S] (Optional) Sky follows the real clock
+- [ ] T2.8 [S] Moments engine + director news queue + fireflies
+- [ ] T2.9 [S] Moments: earthworm, burrowing beetle
+- [ ] T2.10 [S] Moments: mushroom bloom, storm flood
+- [ ] T2.11 [S] Time-lapse: record the nest once a day
+- [ ] T2.12 [H] Time-lapse: playback (T key, auto every 10 days)
+- [ ] T2.13 [S] Ant life stories: the story keeper (names, beats, memorial)
+- [ ] T2.14 [H] Ant life stories: captions, name tags, Stories dialog
+- [ ] T2.15 [S] Music that follows the colony
+- [ ] T2.16 [S] Live-wallpaper and stream URL modes (`?wallpaper`, `?stream`) — needs T2.1
+- [ ] T2.17 [S] Wallpaper Engine + Lively packages — needs T3.3
 
 ### M3 — Desktop & real screensaver → `M3-desktop.md`
 - [ ] T3.1 [S] Electron wrapper (`desktop/`) with `app://` protocol
