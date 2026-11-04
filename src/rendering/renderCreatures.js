@@ -1,5 +1,38 @@
 import { CONFIG } from '../config.js';
 
+// A beetle facing +x, centred on the origin: u is a tile in screen pixels, leg the stride offset
+function beetleBody(ctx, u, leg, flash) {
+  // Shell (elytra) — dark iridescent oval
+  ctx.fillStyle = flash ? '#8a4020' : '#2a1e0c';
+  ctx.fillRect(-u * 1.5, -u * 0.7, u * 3, u * 1.4);
+  // Shell highlight seam
+  ctx.fillStyle = '#3a2c18';
+  ctx.fillRect(-u * 0.08, -u * 0.65, u * 0.16, u * 1.3);
+  // Head
+  ctx.fillStyle = '#1e1408';
+  ctx.fillRect(u * 1.4, -u * 0.45, u * 0.8, u * 0.9);
+  // Antennae
+  ctx.fillStyle = '#3a2818';
+  ctx.fillRect(u * 2.1, -u * 0.9, u * 0.12, u * 0.6);
+  ctx.fillRect(u * 2.0, -u * 0.4, u * 0.9, u * 0.12);
+  // 6 legs
+  ctx.fillStyle = '#120e06';
+  for (let i = -1; i <= 1; i++) {
+    const lx = i * u * 0.8, lo = i === 0 ? 0 : leg;
+    ctx.fillRect(lx - u * 0.08, u * 0.7 + lo, u * 0.16, u * 0.55);
+    ctx.fillRect(lx - u * 0.08, -u * 0.7 - lo, u * 0.16, u * 0.55);
+  }
+}
+
+// The same beetle anywhere and at any angle (the burrowing beetle, src/rendering/renderMoments.js)
+export function drawBeetle(ctx, x, y, angle, u, leg = 0) {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  ctx.rotate(angle);
+  beetleBody(ctx, u, leg, false);
+  ctx.restore();
+}
+
 // Visitors to the farm: beetles, spiders, earwigs, centipedes, pillbugs, crickets and worms
 export function drawCreatures(ctx, camera, creatures) {
   const ts   = CONFIG.TILE_SIZE;
@@ -40,26 +73,7 @@ export function drawCreatures(ctx, camera, creatures) {
     ctx.scale(dir, 1); // flip to face direction of travel
 
     if (c.type === 'beetle') {
-      // Shell (elytra) — dark iridescent oval
-      ctx.fillStyle = c.hitFlash > 0 ? '#8a4020' : '#2a1e0c';
-      ctx.fillRect(-u * 1.5, -u * 0.7, u * 3, u * 1.4);
-      // Shell highlight seam
-      ctx.fillStyle = '#3a2c18';
-      ctx.fillRect(-u * 0.08, -u * 0.65, u * 0.16, u * 1.3);
-      // Head
-      ctx.fillStyle = '#1e1408';
-      ctx.fillRect(u * 1.4, -u * 0.45, u * 0.8, u * 0.9);
-      // Antennae
-      ctx.fillStyle = '#3a2818';
-      ctx.fillRect(u * 2.1, -u * 0.9, u * 0.12, u * 0.6);
-      ctx.fillRect(u * 2.0, -u * 0.4, u * 0.9, u * 0.12);
-      // 6 legs
-      ctx.fillStyle = '#120e06';
-      for (let i = -1; i <= 1; i++) {
-        const lx = i * u * 0.8, lo = i === 0 ? 0 : leg;
-        ctx.fillRect(lx - u * 0.08, u * 0.7 + lo, u * 0.16, u * 0.55);
-        ctx.fillRect(lx - u * 0.08, -u * 0.7 - lo, u * 0.16, u * 0.55);
-      }
+      beetleBody(ctx, u, leg, c.hitFlash > 0);
       // HP bar
 
     } else if (c.type === 'spider') {

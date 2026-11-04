@@ -370,6 +370,38 @@ new; also `src/main.js`, `src/app/director.js`, `src/rendering/renderer.js`, `sr
 **Done when:** both play, are filmed and captioned, the beetle's tunnel is walked by ants
 afterwards, and `npm test` and `npm run soak` pass.
 
+As built (`src/simulation/moments/earthworm.js` and `burrowingBeetle.js`, both new; also
+`src/simulation/moments/index.js`, `src/rendering/renderMoments.js` and `renderCreatures.js`, `src/config.js`;
+the numbers are `MOMENT_WORM_*` and `MOMENT_BEETLE_*` in `CONFIG`):
+- **Earthworm.** As planned. `can` is simply true: only one moment plays at a time, so it never meets a
+  flood. Its trail remembers a head position every 0.1 tile (60 kept, so about 6 tiles of body); it is
+  drawn as a disc at every trail point, banded into 14 segments with every third darker, so it reads as
+  one smooth body rather than beads. At 1× it crosses in 40–75 s; the shot is 24 s.
+- **Beetle.** Digs with `world.finishDig(i)`, the ants' own dig, so nav, `tunnelCount`, the render cache
+  and the projects all update. Three changes from the plan, each from a stress run of 30 beetles in one
+  colony:
+  - it leaves `MOMENT_BEETLE_CAP` (2) rows of turf over its hole and walks in under them, so the farm
+    keeps its one entrance (the entrance field, dirt dumping and the coming flood all assume one);
+  - targets and the break-in are judged by the entrance field (`nav.entrance()`), not by "an open tile
+    next to it": tunnels that the field cannot reach (a dead end left by an earlier beetle, pockets) are
+    not targets, and it has broken in when the tile it just dug gets a distance, which `nav.opened`
+    patches in at once. Before this, 1 run in 7 broke into a pocket the queen could not be reached from;
+  - `start` lists every column at least `MOMENT_BEETLE_FAR` from the entrance that has a target and picks
+    one (twelve random tries failed often), the reach is 44 so a straight dig fits in the 45 tiles, and a
+    column needs at least `MOMENT_BEETLE_MIN_TILES` (8) to dig, so it never pops through beside an old
+    shaft. A colony with no such column gets no beetle; the dice are wasted, nothing else happens.
+  - The beetle drawing is now `beetleBody` in `renderCreatures.js`, used by the visitors and by the
+    exported `drawBeetle(ctx, x, y, angle, u, leg)`; its legs scrabble on real time.
+- **Tests.** `moments` forces both at 1× (at 4× they ran out while the tour waited out the news hold on
+  the fireflies) and plays them to the end with the colony held at speed 0 (which stops the tour, so
+  `finish` starts it again). Worm: no tile changed, and it crossed its whole run. Beetle: every tile it
+  went through was soil (or the tunnel it broke into), all are open, the turf is intact, and when it
+  broke in the queen can be walked to from its end. Mutations caught 4 of 4 (worm sets tiles, worm
+  missing from `MOMENTS`, worm sinks early, beetle writes `world.tiles` directly instead of `finishDig`:
+  caught because the queen cannot be reached from its tunnel). The turf cap has no mutation of its own:
+  `start` puts the first dig below it. `npm run soak` (30 days, Zen)
+  passed, heap and tick time flat; `npm run perf` ratios unchanged.
+
 ---
 
 ## T2.10 [S] Moments: mushroom bloom and the storm flood

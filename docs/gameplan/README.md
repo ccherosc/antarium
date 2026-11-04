@@ -93,7 +93,7 @@ M1–M5 can be interleaved; the order below is the recommended one.
 - [ ] T2.6 [S] Director: cut to every story beat
 - [ ] T2.7 [S] (Optional) Sky follows the real clock
 - [x] T2.8 [S] Moments engine + director news queue + fireflies
-- [ ] T2.9 [S] Moments: earthworm, burrowing beetle
+- [x] T2.9 [S] Moments: earthworm, burrowing beetle
 - [ ] T2.10 [S] Moments: mushroom bloom, storm flood
 - [ ] T2.11 [S] Time-lapse: record the nest once a day
 - [ ] T2.12 [H] Time-lapse: playback (T key, auto every 10 days)

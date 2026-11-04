@@ -1,11 +1,13 @@
 import { CONFIG } from '../../config.js';
 import { logEvent, emit } from '../../events.js';
 import fireflies from './fireflies.js';
+import earthworm from './earthworm.js';
+import beetle from './burrowingBeetle.js';
 
 // Rare scenes with a beginning and an end: fireflies on a clear night, a worm passing the glass…
 // Each is a row in its own file (see fireflies.js for the shape). The engine picks one now and then,
 // favouring the ones not seen for a while, so that a long run keeps surprising.
-export const MOMENTS = [fireflies];
+export const MOMENTS = [fireflies, earthworm, beetle];
 
 const byId = id => MOMENTS.find(r => r.id === id);
 

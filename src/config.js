@@ -173,6 +173,17 @@ export const CONFIG = {
   MOMENT_FIREFLIES: [10, 16],  // how many fireflies in a swarm
   MOMENT_FIREFLY_SPAN: 60,     // tiles of the surface they spread over
   MOMENT_FIREFLY_DAYS: 0.2,    // how long they stay, in days
+  MOMENT_WORM_SPEED: 0.025,    // tiles an earthworm slides a tick
+  MOMENT_WORM_RUN: [60, 120],  // tiles it crosses before it sinks away
+  MOMENT_WORM_SINK_TICKS: 200, // ticks it takes to fade into the deep
+  MOMENT_WORM_SEGMENTS: 14,    // body segments drawn along its trail
+  MOMENT_BEETLE_DIG_TICKS: 90, // ticks the burrowing beetle takes over a tile
+  MOMENT_BEETLE_MAX_TILES: 45, // tiles it digs at most before it gives up
+  MOMENT_BEETLE_REACH: 44,     // tiles it looks for a tunnel to dig toward (a straight dig there fits in MAX_TILES)
+  MOMENT_BEETLE_MIN_TILES: 8,  // it only lands where there is at least this much to dig
+  MOMENT_BEETLE_FAR: 40,       // tiles from the colony entrance it lands, at least
+  MOMENT_BEETLE_CAP: 2,        // rows of turf it leaves over its hole, so the nest keeps one entrance
+  MOMENT_BEETLE_OUT_TICKS: 300,   // ticks it takes to climb back out
   DIRECTOR_NEWS_HOLD: 12,      // seconds a cut to news is held before more news may cut in
 
   // The strip of walking ants along the bottom of the title screen (src/ui/titleScreen.js)

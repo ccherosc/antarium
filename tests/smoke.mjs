@@ -1932,6 +1932,29 @@ async function runMoments() {
     sky.weather = 'clear'; sky.rain = 0; sky.overcast = 0;
     sky._calc();
   });
+  // Noon of the same day, clear
+  const noon = page => page.evaluate(() => {
+    const { sky, CONFIG } = { sky: window.__pa.sim.sky, CONFIG: window.__pa.CONFIG };
+    sky.time = (sky.day - 1) * CONFIG.DAY_TICKS + CONFIG.DAY_TICKS * 0.5;
+    sky.weather = 'clear'; sky.rain = 0; sky.overcast = 0;
+    sky._calc();
+  });
+  // The tour is on moment `id` and has been for a moment
+  const filmed = (page, id) => page.waitForFunction(kind => {
+    const s = window.__pa.director.shot;
+    return s?.kind === kind && s.age > s.zt + 1;
+  }, 'moment:' + id, { timeout: 30_000 }).then(() => true, () => false);
+  // With the colony held still (speed 0), plays the active moment to its end; ticks it took. Speed 0
+  // stops the tour, so it is started again at 1× afterwards
+  const finish = page => page.evaluate(() => {
+    const { sim, gameLoop, director } = window.__pa;
+    gameLoop.setSpeed(0);
+    let n = 0;
+    while (sim.moments.active && n < 20000) { sim.moments.update(sim); n++; }
+    gameLoop.setSpeed(1);
+    director.start();
+    return sim.moments.active ? -1 : n;
+  });
   try {
     const page = await open('?debug&new&mode=screensaver');
 
@@ -2015,6 +2038,67 @@ async function runMoments() {
     const log = await page.evaluate(() => window.__momentLog.map(e => e.join(' ')).join(', '));
     check(log === 'moment fireflies, end fireflies', `the bus heard "${log}", wanted "moment fireflies, end fireflies"`);
 
+    // An earthworm crosses the glass, filmed, and changes no tile on the way. At 1×, so it is still
+    // crossing when the tour gets to it (news waits out the hold on the fireflies first)
+    await page.evaluate(() => window.__pa.gameLoop.setSpeed(1));
+    check(await page.evaluate(() => {
+      const { sim } = window.__pa;
+      if (!sim.moments.force('earthworm', sim)) return false;
+      window.__worm = sim.moments.active.m;
+      return true;
+    }), 'the earthworm would not start');
+    check(await filmed(page, 'earthworm'), `the tour did not cut to the earthworm (it is on ${await page.evaluate(() => window.__pa.director.shot?.kind)})`);
+    check(await page.evaluate(() => window.__pa.director.shot?.title) === 'An earthworm passes the glass', 'the earthworm shot has the wrong title');
+    await page.waitForTimeout(1500);
+    await shot(page, 'moment-earthworm');
+    await page.evaluate(() => { window.__tiles = window.__pa.sim.world.tiles.slice(); });
+    const wormTicks = await finish(page);
+    const wormAfter = await page.evaluate(() => {
+      const { sim } = window.__pa, m = window.__worm, a = window.__tiles, b = sim.world.tiles;
+      let changed = 0;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) changed++;
+      return { changed, went: m.went, run: m.run };
+    });
+    check(wormTicks > 0, 'the earthworm never ended');
+    check(wormAfter.changed === 0, `the earthworm changed ${wormAfter.changed} tiles`);
+    check(wormAfter.went >= wormAfter.run, `the earthworm sank after ${wormAfter.went.toFixed(1)} of its ${wormAfter.run.toFixed(1)} tiles`);
+
+    // A burrowing beetle digs a real tunnel into the nest, through soil only, and the nest reaches it
+    await noon(page);
+    const beetle = await page.evaluate(() => {
+      const { sim } = window.__pa;
+      window.__tiles = sim.world.tiles.slice();
+      if (!sim.moments.force('beetle', sim)) return false;
+      window.__beetle = sim.moments.active.m;
+      return true;
+    });
+    check(beetle, 'the beetle found no tunnel to dig toward');
+    if (beetle) {
+      check(await filmed(page, 'beetle'), `the tour did not cut to the beetle (it is on ${await page.evaluate(() => window.__pa.director.shot?.kind)})`);
+      await page.waitForFunction(() => window.__beetle.dug >= 4, null, { timeout: 30_000 }).catch(() => {});
+      await shot(page, 'moment-beetle');
+      check(await finish(page) >= 0, 'the beetle never climbed out');
+      const dug = await page.evaluate(() => {
+        const { sim, CONFIG } = window.__pa, { world } = sim, m = window.__beetle, a = window.__tiles;
+        const top = CONFIG.SURFACE_ROW + CONFIG.MOMENT_BEETLE_CAP;
+        const tiles = m.path.filter(([, y]) => y >= top).map(([x, y]) => Math.floor(y) * world.width + Math.floor(x));
+        const bad = tiles.filter(i => a[i] !== 2 && a[i] !== 3).map(i => a[i]);   // TILE.SOIL, TILE.TUNNEL
+        const shut = tiles.filter(i => !world.isOpen(i % world.width, Math.floor(i / world.width))).length;
+        const cap = [...Array(CONFIG.MOMENT_BEETLE_CAP).keys()].filter(k => world.isOpen(Math.floor(m.path[0][0]), CONFIG.SURFACE_ROW + k)).length;
+        // can the queen be walked to from the end of it?
+        const q = Math.floor(sim.queen.y) * world.width + Math.floor(sim.queen.x);
+        world.nav.drop('p' + q);
+        const far = world.nav.point(q).dist[tiles[tiles.length - 1]];
+        return { dug: m.dug, broke: m.broke, bad, shut, cap, far };
+      });
+      check(dug.dug > 0, 'the beetle dug nothing');
+      check(dug.bad.length === 0, `the beetle went through tiles that were not soil (${dug.bad.join(', ')})`);
+      check(dug.shut === 0, `${dug.shut} tiles of the beetle's tunnel are closed`);
+      check(dug.cap === 0, 'the beetle opened a second entrance through the turf');
+      check(!dug.broke || dug.far < 0xFFFF, 'the beetle broke into the tunnels but the queen cannot be reached from its tunnel');
+      info.push(`beetle dug ${dug.dug}${dug.broke ? ' and broke in' : ', gave up'}`);
+    }
+
     // The day they last ran is kept with the colony
     const day = await page.evaluate(() => window.__pa.sim.moments.last.fireflies);
     await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
@@ -2041,7 +2125,7 @@ async function runMoments() {
     const quiet = await surv.evaluate(() => ({ active: !!window.__pa.sim.moments.active, last: Object.keys(window.__pa.sim.moments.last).length }));
     check(!quiet.active && quiet.last === 0, 'Survival started a moment');
     await surv.close();
-    info.push('fireflies');
+    info.push('fireflies, earthworm');
   } catch (e) {
     problems.push(`stopped: ${e.message}`);
   }

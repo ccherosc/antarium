@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { settings } from '../settings.js';
+import { drawBeetle } from './renderCreatures.js';
 
 const TS = CONFIG.TILE_SIZE;
 
@@ -34,6 +35,36 @@ const DRAW = {
       ctx.fillStyle = `rgba(240,255,190,${a})`;
       ctx.fillRect(sx - core / 2, sy - core / 2, core, core);
     }
+    ctx.restore();
+  },
+
+  earthworm(ctx, camera, m) {
+    const u = TS * camera.zoom, tr = m.trail, N = CONFIG.MOMENT_WORM_SEGMENTS;
+    if (tr.length < 2) return;
+    ctx.save();
+    ctx.globalAlpha = m.fade;
+    // a disc at every point of its trail, tail first so the head lies over the body; the body is N
+    // segments, every third a darker ring, thinning toward the tail, the head a little thicker
+    const last = tr.length - 1;
+    for (let k = 0; k <= last; k++) {
+      const f = (last - k) / last, s = Math.min(N - 1, Math.floor(f * N));   // 0 at the head
+      const [sx, sy] = camera.worldToScreen(tr[k][0] * TS, tr[k][1] * TS);
+      const r = u * (s === 0 ? 0.5 : 0.45 - 0.2 * f);
+      ctx.fillStyle = s % 3 === 2 ? '#a65a5d' : '#c9787a';
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  },
+
+  beetle(ctx, camera, m, t) {
+    const u = TS * camera.zoom * 0.8;
+    const [sx, sy] = camera.worldToScreen(m.x * TS, m.y * TS);
+    const leg = Math.sin(t * 9) > 0 ? u * 0.18 : -u * 0.18;   // its legs scrabble on real time
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, m.fade);
+    drawBeetle(ctx, sx, sy, m.ang, u, leg);
     ctx.restore();
   },
 };
