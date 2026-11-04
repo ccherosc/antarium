@@ -1,5 +1,6 @@
 import { CONFIG, ROOM, STATE, CARRY } from '../config.js';
 import { HOME } from './camera.js';
+import { on } from '../events.js';
 
 const TS = CONFIG.TILE_SIZE;
 const W = CONFIG.WORLD_WIDTH, H = CONFIG.WORLD_HEIGHT;
@@ -69,6 +70,26 @@ export class Director {
     this._seenVisitor = null;
     this._seenFlight = 0;
     this._seenRain = false;
+    this._news = [];        // things that happened, waiting for the camera: see news()
+
+    on('moment', e => this.news({ kind: 'moment:' + e.id, title: e.title, x: e.x, y: e.y, ...e.shot, subject: e.subject }));
+  }
+
+  // Something happened that the camera should cut to: { kind, title, x, y, tall, dur, subject }. subject(),
+  // if given, says where it is now, and null once it is over; news that is over before the camera gets to
+  // it is dropped. One of a kind at a time.
+  news(item) {
+    if (this._news.some(n => n.kind === item.kind)) return;
+    this._news.push(item);
+  }
+
+  // The first news still worth a look, taken off the queue; null when there is none
+  _nextNews() {
+    while (this._news.length) {
+      const n = this._news.shift();
+      if (!n.subject || n.subject()) return n;
+    }
+    return null;
   }
 
   // Somebody touched something
@@ -294,6 +315,10 @@ export class Director {
   // Something that will not wait for the current shot to finish
   _breaking() {
     const { sky } = this.sim;
+    if (this._news.some(n => !n.subject || n.subject())) {
+      // a cut to news is held a while before more news cuts in
+      if (!this.shot?.news || this.shot.age >= CONFIG.DIRECTOR_NEWS_HOLD) return true;
+    }
     if (sky.flightUntil > sky.time && this._seenFlight !== sky.flightUntil) return true;
     const v = this._visitor();
     return !!v && v !== this._seenVisitor;
@@ -307,6 +332,12 @@ export class Director {
     if (sky.flightUntil > sky.time && this._seenFlight !== sky.flightUntil) {
       this._seenFlight = sky.flightUntil;
       return this._close('flight', 'The nuptial flight', CX + 1, SR - 8, 46, { dur: 24 });
+    }
+    const n = this._nextNews();
+    if (n) {
+      const s = this._close(n.kind, n.title, n.x, n.y, n.tall ?? 36, { dur: n.dur, subject: n.subject });
+      s.news = true;
+      return s;
     }
     const v = this._visitor();
     if (v && v !== this._seenVisitor) {

@@ -293,6 +293,32 @@ each is a surprise and none repeats too soon, and the camera cuts to each one.
 **Done when:** a Zen colony left at 4× shows fireflies on some clear nights, the tour cuts to
 them with the caption, and `npm test` passes.
 
+As built (`src/simulation/moments/index.js` and `fireflies.js`, `src/rendering/renderMoments.js`, all
+new; also `src/main.js`, `src/app/director.js`, `src/rendering/renderer.js`, `src/saveLoad.js`,
+`src/modes.js`, `src/audio/audio.js`, `src/config.js`; the numbers are the "Moments" block of `CONFIG`):
+- **Engine.** `pickMoment(rows, last, day, rand)` is exported on its own: rows inside their `gapDays` are
+  skipped, the rest weighted `weight × min(3, 1 + since / gapDays)` (a row never seen gets 3×), null when
+  nothing is open. `Moments.update` ticks the active moment and ends it when `tick` returns false;
+  otherwise it rolls every `MOMENT_CHECK_TICKS` once `MOMENT_MIN_GAP_TICKS` have passed since the last one.
+  `force(id, sim)` takes the sim (the plan said `force(id)`) and returns false when `start` finds no room.
+  The `moment` event carries `{id, title, x, y, shot, subject}`; `subject()` goes null once the moment ends.
+  `main.js` runs it after the creatures, only when `rules().moments` (Zen true, Survival false).
+- **Director news.** `director.news(item)` keeps one item per kind; the director subscribes to `moment`
+  itself. `_breaking()` cuts the current shot short when live news is waiting, unless that shot is
+  itself news younger than `DIRECTOR_NEWS_HOLD` (12 s). `_choose()` takes news after the flight check
+  and before visitors; items whose subject has gone are dropped.
+- **Fireflies.** The sim keeps only where each fly hovers, its phase and speed, and a fade (in over the
+  first tenth, out over the last); the drift and the blink are drawn on the renderer's real-time clock, so
+  8× does not make them race, and Reduce motion halves the drift. Drawn with `'lighter'` inside the glass
+  clip, after the creatures. A soft two-note chime (`SFX.moment`) plays on every `moment`.
+- **Saves.** `VERSION` 4: `moments` is a new entry in `EXTRAS` (`{last, timer, quiet}`); migration 3 → 4 is a
+  no-op, and an old save starts with the gap already served. What is playing is not saved.
+- **Tests.** The `moments` check runs `pickMoment` in the page (by import) rather than in node. It also
+  compares three renders at a fixed clock (dark, lit, dark) to prove the glow is drawn, and waits for
+  Survival by tick count. Mutations caught 6 of 6 (gap ignored, director not subscribed, `drawMoments`
+  removed, Survival `moments: true`, `moments` dropped from `EXTRAS`, fireflies never ending). The sound lab
+  measures `moment` at 880 and 1320 Hz. `npm run perf` ratios unchanged.
+
 ---
 
 ## T2.9 [S] Moments: the earthworm and the burrowing beetle

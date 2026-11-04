@@ -166,6 +166,15 @@ export const CONFIG = {
   AUDIO_SFX_GAP: 0.06,         // seconds between two of the same effect, so a burst of hatchings is not a roar
   AUDIO_TRIM: { wind: 2.5, rain: 1.5 },   // gain that brings each looped layer to a loudness (RMS) of about 0.4 at a layer gain of 1
 
+  // Rare moments (src/simulation/moments/): about one every two days, never two within half a day
+  MOMENT_CHECK_TICKS: 1200,    // how often the dice are rolled
+  MOMENT_CHANCE: 0.08,         // the chance a roll starts one
+  MOMENT_MIN_GAP_TICKS: 7200,  // ticks after one ends before the next may start (half a day)
+  MOMENT_FIREFLIES: [10, 16],  // how many fireflies in a swarm
+  MOMENT_FIREFLY_SPAN: 60,     // tiles of the surface they spread over
+  MOMENT_FIREFLY_DAYS: 0.2,    // how long they stay, in days
+  DIRECTOR_NEWS_HOLD: 12,      // seconds a cut to news is held before more news may cut in
+
   // The strip of walking ants along the bottom of the title screen (src/ui/titleScreen.js)
   TITLE_ANTS: 12,              // how many ants walk along it
   TITLE_ANT_PIXEL: 5,          // screen pixels to a pixel of the strip, so an ant is 5 by 3 of them

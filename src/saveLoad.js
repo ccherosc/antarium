@@ -3,16 +3,17 @@
 // Changing what a save holds? Bump VERSION and add a MIGRATIONS entry. Never delete a migration:
 // somebody's colony is still on that version. tests/fixtures/save-v2-screensaver.json is a real
 // version-2 save, and npm test must keep resuming it.
-export const VERSION = 3;
+export const VERSION = 4;
 
 // MIGRATIONS[n] turns a version-n save into a version-(n+1) save
 const MIGRATIONS = {
   2: d => ({ ...d, extra: {} }),
+  3: d => d,   // T2.8 adds extra.moments; a save without it starts the moments afresh
 };
 
 // Systems on `sim` beyond the core colony that save themselves (save() / load(data)); what
-// they save goes in the save's `extra`. Survival run state (T5.1), decorations (T4.2).
-const EXTRAS = ['run', 'decor'];
+// they save goes in the save's `extra`. Survival run state (T5.1), decorations (T4.2), rare moments (T2.8).
+const EXTRAS = ['run', 'decor', 'moments'];
 
 const key = mode => `pixelants_${mode}`;
 const legacyKey = mode => `pixelants_v2_${mode}`;   // from when the version was part of the key

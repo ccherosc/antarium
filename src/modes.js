@@ -16,6 +16,7 @@ export const MODES = {
     foodScalesWithColony: true,   // surface food is capped by colony size, not a flat count
     dewScalesWithColony: true,    // the dawn dew grows with the colony
     autoTour: true,           // the director's camera tour starts switched on
+    moments: true,            // rare scenes now and then: fireflies, … (src/simulation/moments/)
     showConditions: false,    // the panel's dig-speed and birthrate sliders (developer knobs) are shown
     gameOver: false,          // the run ends when the queen dies or the colony is gone
     pregrow: true,            // a new colony is grown into a busy nest before the first frame
@@ -27,7 +28,7 @@ export const MODES = {
     label: 'Survival', badge: 'SURVIVAL', cls: 'survival',
     lifespanMult: 1, noStarvation: false, queenHealthFloor: 0, freeEggs: false,
     digSpeed: 3, floors: null, stress: true, foodSpawnTicks: null,
-    foodScalesWithColony: false, dewScalesWithColony: false, autoTour: false, showConditions: true, gameOver: true,
+    foodScalesWithColony: false, dewScalesWithColony: false, autoTour: false, moments: false, showConditions: true, gameOver: true,
     pregrow: false, catchUp: false, fpsCap: 60,
     intro: 'Survival — keep the queen alive',
   },

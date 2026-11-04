@@ -4,6 +4,7 @@ import { AntSystem } from './simulation/ants.js';
 import { Queen } from './simulation/queen.js';
 import { ColonyStats } from './simulation/stats.js';
 import { CreatureSystem } from './simulation/creatures.js';
+import { Moments } from './simulation/moments/index.js';
 import { Camera } from './app/camera.js';
 import { Director } from './app/director.js';
 import { InputHandler } from './app/input.js';
@@ -66,7 +67,7 @@ function createSim() {
   world.sky       = sky;
   const antSystem = new AntSystem(world);
   const queen     = new Queen(world);
-  return { world, sky, antSystem, queen, stats: new ColonyStats(), creatures: new CreatureSystem() };
+  return { world, sky, antSystem, queen, stats: new ColonyStats(), creatures: new CreatureSystem(), moments: new Moments() };
 }
 
 function updateSaveStatus(msg) {
@@ -139,7 +140,7 @@ if (shouldLoad && !loadGame(GameState.mode, sim)) {
   resumed = false;
   bootNote = 'Save corrupted — starting fresh';
 }
-const { world, sky, antSystem, queen, stats, creatures } = sim;
+const { world, sky, antSystem, queen, stats, creatures, moments } = sim;
 
 function doSave() {
   return saveGame(GameState.mode, sim);
@@ -183,6 +184,7 @@ function tick(dt) {
   antSystem.update(dt, queen, sim);
   queen.update(world, antSystem);
   creatures.update(world, antSystem);
+  if (rules().moments) moments.update(sim);
   stats.update(world, antSystem, queen);
 }
 
@@ -310,6 +312,7 @@ if (bootNote) updateSaveStatus(bootNote);
 // hatchings of a fast-forward are not played back as one roar.
 on('rainStart', () => audio.playSfx('thunder'));
 on('hatch', e => audio.playSfx('hatch', e));
+on('moment', () => audio.playSfx('moment'));
 
 // Test/debug hook: tests/*.mjs drive the game through this (see claude.md). It appears once the
 // colony is ready, so a test that waits for it never races the fast-forward.

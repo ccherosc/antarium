@@ -2,6 +2,7 @@ import { renderWorld, drawWorldToScreen, forceFullRedraw, renderPheromoneOverlay
 import { renderAnts } from './renderAnts.js';
 import { drawSky, drawSurface, glowSprite, hash } from './renderSky.js';
 import { drawCreatures } from './renderCreatures.js';
+import { drawMoments } from './renderMoments.js';
 import { Effects } from './effects.js';
 import { CONFIG, ROOM } from '../config.js';
 
@@ -92,6 +93,7 @@ export class Renderer {
 
     renderAnts(ctx, antSystem, queen, camera, alpha, this.t);
     if (creatures) drawCreatures(ctx, camera, creatures.creatures);
+    drawMoments(ctx, camera, sim, this.t);
     this.effects.draw(ctx, camera, sim);
 
     ctx.restore();

@@ -37,7 +37,7 @@ const MAX_SECONDS = 90;    // stop waiting after this long
 const RESUME_TICKS = 1500; // a resumed colony may have run this long (~25 s at 1x) before we look
 const VIEWPORT = { width: 1600, height: 900 };
 
-const CHECKS = ['boot', 'title', 'crash', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'fastforward', 'performance', 'sound', ...MODES];
+const CHECKS = ['boot', 'title', 'crash', 'settings', 'settingsmenu', 'pause', 'saves', 'events', 'moments', 'fastforward', 'performance', 'sound', ...MODES];
 const only = process.argv.slice(2);   // the checks to run; none named means all of them
 const unknown = only.filter(name => !CHECKS.includes(name));
 if (unknown.length) {
@@ -1910,6 +1910,146 @@ function recordOverlay() {
 // Fast-forward (src/app/fastForward.js, src/main.js): the engine on its own; a new colony grown
 // before its first frame (in daylight, within its limits, and still starting if the growth fails);
 // and a resumed colony catching up on the time its player was away, with the news.
+// Rare moments (T2.8): the choice keeps a long run varied, a moment plays, the tour cuts to it, it ends, the
+// days they last ran are saved, and Survival has none
+async function runMoments() {
+  const problems = [];
+  const check = (ok, msg) => { if (!ok) problems.push(msg); };
+  const info = [];
+  const ctx = await browser.newContext({ viewport: VIEWPORT });
+  const seen = [];
+  const open = async query => {
+    const page = await ctx.newPage();
+    seen.push(watch(page));
+    await page.goto(`${base}${query}`);
+    await page.waitForFunction(() => window.__pa, null, { timeout: 60_000 });
+    return page;
+  };
+  // Midnight of the day it is now, so the sky is dark and no dawn comes for a while
+  const night = page => page.evaluate(() => {
+    const { sky, CONFIG } = { sky: window.__pa.sim.sky, CONFIG: window.__pa.CONFIG };
+    sky.time = (sky.day - 1) * CONFIG.DAY_TICKS + CONFIG.DAY_TICKS * 0.02;
+    sky.weather = 'clear'; sky.rain = 0; sky.overcast = 0;
+    sky._calc();
+  });
+  try {
+    const page = await open('?debug&new&mode=screensaver');
+
+    // The choice, on its own: 120 days (eight hours at 1×) of rolls with the rows of the finished table
+    const pick = await page.evaluate(async () => {
+      const { pickMoment } = await import('/src/simulation/moments/index.js');
+      const rows = [['fireflies', 3, 2], ['earthworm', 3, 3], ['beetle', 2, 6], ['bloom', 2, 4], ['flood', 1, 8]]
+        .map(([id, weight, gapDays]) => ({ id, weight, gapDays }));
+      const last = {}, count = {}, early = [];
+      let total = 0, quiet = 99;
+      for (let day = 1; day <= 120; day++) {
+        for (let roll = 0; roll < 12; roll++, quiet++) {
+          if (quiet < 6 || Math.random() >= 0.08) continue;
+          const row = pickMoment(rows, last, day);
+          if (!row) continue;
+          if (last[row.id] !== undefined && day - last[row.id] < row.gapDays) early.push(`${row.id} on day ${day}`);
+          last[row.id] = day;
+          count[row.id] = (count[row.id] || 0) + 1;
+          total++; quiet = 0;
+        }
+      }
+      const none = pickMoment(rows, Object.fromEntries(rows.map(r => [r.id, 10])), 10);
+      return { count, total, early, none: none?.id ?? null };
+    });
+    for (const id of ['fireflies', 'earthworm', 'beetle', 'bloom', 'flood']) {
+      check(pick.count[id] > 0, `in 120 days ${id} was never picked`);
+      check((pick.count[id] || 0) <= 0.45 * pick.total, `in 120 days ${id} was ${pick.count[id]} of the ${pick.total} picks`);
+    }
+    check(pick.early.length === 0, `picked again too soon: ${pick.early.slice(0, 3).join(', ')}`);
+    check(pick.none === null, `with every moment run today, ${pick.none} was picked`);
+    info.push(`${pick.total} in 120 days`);
+
+    // Fireflies, forced at night: the tour cuts to them, captioned, and they end
+    await page.evaluate(() => { window.__pa.director.start(); });
+    await night(page);
+    const started = await page.evaluate(async () => {
+      const { on } = await import('/src/events.js');
+      window.__momentLog = [];
+      on('moment', e => window.__momentLog.push(['moment', e.id]));
+      on('momentEnd', e => window.__momentLog.push(['end', e.id]));
+      const { sim } = window.__pa;
+      return sim.moments.force('fireflies', sim);
+    });
+    check(started, 'fireflies would not start');
+    const cut = await page.waitForFunction(() => {
+      const s = window.__pa.director.shot;
+      return s?.kind === 'moment:fireflies' && s.age > s.zt + 1;
+    }, null, { timeout: 30_000 }).then(() => true, () => false);
+    check(cut, `the tour did not cut to the fireflies (it is on ${await page.evaluate(() => window.__pa.director.shot?.kind)})`);
+    const during = await page.evaluate(() => ({
+      title: window.__pa.director.shot?.title,
+      caption: document.getElementById('cap-title')?.textContent ?? null,
+      flies: window.__pa.sim.moments.active?.m.flies.length ?? 0,
+    }));
+    check(during.title === 'Fireflies', `the shot is called "${during.title}"`);
+    check(during.caption === 'Fireflies', `the caption says "${during.caption}"`);
+    check(during.flies >= 10, `the swarm has ${during.flies} fireflies`);
+    await shot(page, 'moment-fireflies');
+
+    // they light the night: the screen is brighter with them than without
+    const glow = await page.evaluate(async () => {
+      const { renderer, camera, sim } = window.__pa;
+      const c = renderer.canvas, g = c.getContext('2d');
+      const sum = () => { const d = g.getImageData(0, 0, c.width, c.height).data; let s = 0; for (let i = 1; i < d.length; i += 4) s += d[i]; return s; };
+      const a = sim.moments.active;
+      for (const f of a.m.flies) f.phase = 0;            // all lit at once at t = 0 (see renderMoments.js)
+      const t = renderer.t;
+      // no time passes in these frames (frameMs 0), so only what is drawn differs
+      const frame = () => { renderer.t = 0.2; renderer.render(camera, sim, 1, 0, 0); return sum(); };
+      sim.moments.active = null; const dark = frame();
+      sim.moments.active = a; const lit = frame();
+      sim.moments.active = null; const dark2 = frame();
+      sim.moments.active = a; renderer.t = t;
+      return { lit, dark, noise: Math.abs(dark - dark2) };
+    });
+    check(glow.lit - glow.dark > Math.max(2000, 10 * glow.noise), `the screen is no brighter with the fireflies (${glow.lit} against ${glow.dark}, frames differ by ${glow.noise} anyway)`);
+
+    await page.evaluate(() => window.__pa.gameLoop.setSpeed(8));
+    const ended = await page.waitForFunction(() => !window.__pa.sim.moments.active, null, { timeout: 30_000 }).then(() => true, () => false);
+    check(ended, 'the fireflies were still out after 30 s at 8×');
+    const log = await page.evaluate(() => window.__momentLog.map(e => e.join(' ')).join(', '));
+    check(log === 'moment fireflies, end fireflies', `the bus heard "${log}", wanted "moment fireflies, end fireflies"`);
+
+    // The day they last ran is kept with the colony
+    const day = await page.evaluate(() => window.__pa.sim.moments.last.fireflies);
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.close();
+    const again = await open('?debug&mode=screensaver');
+    const kept = await again.evaluate(() => window.__pa.sim.moments.last.fireflies);
+    check(Number.isFinite(day) && kept === day, `after a reload fireflies last ran on day ${kept}, was ${day}`);
+
+    // Left to itself with the dice loaded, a Zen night starts a moment
+    await again.evaluate(() => { const { CONFIG } = window.__pa; CONFIG.MOMENT_CHANCE = 1; CONFIG.MOMENT_MIN_GAP_TICKS = 0; window.__pa.sim.moments.last = {}; });
+    await night(again);
+    await again.evaluate(() => window.__pa.gameLoop.setSpeed(8));
+    const natural = await again.waitForFunction(() => window.__pa.sim.moments.active, null, { timeout: 20_000 }).then(() => true, () => false);
+    check(natural, 'a Zen night with every roll a hit started no moment');
+    await again.close();
+
+    // Survival has none, however loaded the dice
+    const surv = await open('?debug&new&mode=survival');
+    await surv.evaluate(() => { const { CONFIG } = window.__pa; CONFIG.MOMENT_CHANCE = 1; CONFIG.MOMENT_MIN_GAP_TICKS = 0; });
+    await night(surv);
+    const from = await surv.evaluate(() => { window.__pa.gameLoop.setSpeed(8); return window.__pa.sim.world.tick; });
+    const rolled = await surv.waitForFunction(n => window.__pa.sim.world.tick > n + 3 * 1200, from, { timeout: 30_000 }).then(() => true, () => false);
+    check(rolled, 'Survival did not run long enough to have rolled');
+    const quiet = await surv.evaluate(() => ({ active: !!window.__pa.sim.moments.active, last: Object.keys(window.__pa.sim.moments.last).length }));
+    check(!quiet.active && quiet.last === 0, 'Survival started a moment');
+    await surv.close();
+    info.push('fireflies');
+  } catch (e) {
+    problems.push(`stopped: ${e.message}`);
+  }
+  problems.push(...seen.flat());
+  await ctx.close();
+  report('moments', problems, info.join(', '));
+}
+
 async function runFastForward() {
   const OLD = 'pixelants_v2_screensaver', CUR = 'pixelants_screensaver';
   const PEAK = 777;   // more than a new colony reaches: tells a resumed colony from a new one
@@ -2741,10 +2881,12 @@ const soundLab = page => page.evaluate(async () => {
   // Each effect, played at 0.1 s
   const play = (name, seconds = 3) => bare(seconds, g => SFX[name](g, 0.1, 0));
   const place = await play('place'), unlock = await play('unlock'), hatch = await play('hatch'), over = await play('gameover');
+  const moment = await play('moment');
   const window8k = (d, at) => spectrum(d.subarray(Math.round(at * RATE), Math.round(at * RATE) + N));
   out.sfx.place = { ...measure(place, 0, {}), length: lastAbove(place) };
   out.sfx.unlock = { ...measure(unlock, 0, { n659: [600, 720], n988: [920, 1060] }), length: lastAbove(unlock) };
   out.sfx.hatch = { ...measure(hatch, 0, {}), length: lastAbove(hatch) };
+  out.sfx.moment = { ...measure(moment, 0, { n880: [820, 940], n1320: [1240, 1400] }), length: lastAbove(moment) };
   out.sfx.gameover = { ...measure(over, 0, {}), length: lastAbove(over), startHz: peakHz(window8k(over, 0.02)), endHz: peakHz(window8k(over, 1.2)) };
   const thunder = { loudest: [], loudAt: [], peak: [], lt40: [], last: [], tail: [] };
   for (let run = 0; run < 8; run++) {
@@ -2903,6 +3045,10 @@ function judgeLab(lab, check, info) {
   between('the length of the chime (s)', sfx.unlock.length, 0.4, 1.6);
   between('the length of the hatching pop (s)', sfx.hatch.length, 0, 0.25);
   between('the peak of the hatching pop', sfx.hatch.peak, 0, 0.5);
+  between('the share of the moment chime at 880 Hz', sfx.moment.n880, 0.2, 1);
+  between('the share of the moment chime at 1320 Hz', sfx.moment.n1320, 0.15, 1);
+  between('the length of the moment chime (s)', sfx.moment.length, 0.4, 1.2);
+  between('the peak of the moment chime', sfx.moment.peak, 0.02, 0.35);
   check(sfx.gameover.startHz > 1.5 * sfx.gameover.endHz, `the game-over tone goes from ${Math.round(sfx.gameover.startHz)} Hz to ${Math.round(sfx.gameover.endHz)} Hz, wanted it to fall by half again`);
   between('the length of the game-over tone (s)', sfx.gameover.length, 0.8, 2.2);
   between('the pitch the game-over tone is centred on (Hz)', sfx.gameover.centroid, 80, 400);
@@ -3418,6 +3564,7 @@ try {
   if (wanted('pause')) await runPause();
   if (wanted('saves')) await runSaves();
   if (wanted('events')) await runEvents();
+  if (wanted('moments')) await runMoments();
   if (wanted('fastforward')) await runFastForward();
   if (wanted('performance')) await runPerformance();
   if (wanted('sound')) await runSound();

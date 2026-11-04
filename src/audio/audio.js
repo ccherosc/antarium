@@ -274,6 +274,12 @@ export const SFX = {
     tone(ctx, sfx, { at, freq: 320, to: 900, dur: 0.05, peak: 0.25, pan });
   },
 
+  // a high, soft chime of two notes for a rare moment, the second a fifth above
+  moment({ ctx, sfx }, at) {
+    tone(ctx, sfx, { at, freq: 880, dur: 0.6, peak: 0.12, attack: 0.02, type: 'triangle' });
+    tone(ctx, sfx, { at: at + 0.18, freq: 1320, dur: 0.7, peak: 0.1, attack: 0.02, type: 'triangle' });
+  },
+
   // a low tone that falls away
   gameover({ ctx, sfx }, at) {
     tone(ctx, sfx, { at, freq: 220, to: 55, dur: 1.8, peak: 0.5, attack: 0.02, type: 'triangle' });
