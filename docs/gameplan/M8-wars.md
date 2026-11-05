@@ -11,6 +11,8 @@ spider wasp. Survival gets the same machinery with real stakes (last section).
 
 Needs M2's moments engine (T2.8, T2.9). T2.13–T2.15 (life stories, music) are used when
 they exist and skipped when they don't. The survival tickets need M5 (T5.1–T5.6).
+In the Biome mode (M9) the neighbours live in the open land instead of on the shelf and
+march overland; that is T9.11, built on T8.1–T8.6 unchanged.
 
 ---
 

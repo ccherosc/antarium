@@ -174,6 +174,23 @@ dies), and the wars of the meadow. Needs T2.8–T2.9; Survival tickets (T8.20–
 - [ ] T8.22 [S] Survival: counter-raid and conquest scenarios
 - [ ] T8.23 [H] Survival: nature as threats
 
+### M9 — Biome (the colony in the open) → `M9-biome.md`
+A third mode between Zen and Survival: the same calm colony out of the glass, in a long
+strip of country (woodland, meadow, pond, sand, stones), each stretch with its own soil,
+plants, creatures and moments. Zen stays the tank. Needs T2.8–T2.9; T9.11 needs T8.1–T8.6.
+- [ ] T9.1 [S] World size per mode (mode `world` field, lazy size constants)
+- [ ] T9.2 [S] The simulation at three times the size (measure; nav budget, saves, redraws)
+- [ ] T9.3 [S] The Biome mode (mode row, title button, open frame, height-fit camera)
+- [ ] T9.4 [S] The shape of the land: hills, banks and ponds (`terrainH`, save bump)
+- [ ] T9.5 [S] Biomes: the table and the seeded layout (soil per biome)
+- [ ] T9.6 [S] Dressing the land: plants, parallax ridges, fog at the ends
+- [ ] T9.7 [S] Filming a wide world: place shots and journeys
+- [ ] T9.8 [S] Who lives where: creatures and food per biome
+- [ ] T9.9 [S] Moments of the land (frog chorus, dragonfly hatch, leaf fall, …)
+- [ ] T9.10 [S] Release into the wild (copy a Zen colony into Biome)
+- [ ] T9.11 [S] Wars in the open (needs T8.1–T8.6)
+- [ ] T9.12 [S] Stability and performance pass for Biome
+
 ---
 
 ## Code map (where things live)
@@ -191,6 +208,7 @@ dies), and the wars of the meadow. Needs T2.8–T2.9; Survival tickets (T8.20–
 | Surface creatures | `src/simulation/creatures.js` | `_trySpawn()` |
 | Moments (fireflies, earthworm, beetle, …) | `src/simulation/moments/` | `index.js` lists `MOMENTS`; one file per moment |
 | Wars (M8, planned) | `src/simulation/war/` | `tribes.js`, `rivalFarm.js` (`sim.rival`), `army.js` (`sim.war`), `ladder.js`, `campaign.js`, `damage.js` |
+| Biome land (M9, planned) | `src/simulation/land/` | `biomes.js` (`BIOMES`), `layout.js`, `terrain.js` (`world.terrainH`, `world.lift(x)`), `flora.js`, `release.js` |
 | Stats for the dashboard | `src/simulation/stats.js` | |
 | Fixed-step loop, speed | `src/app/gameLoop.js` | `SIM_STEP` 16 ms, `setSpeed(0..8)` |
 | Camera / cinematic tour | `src/app/camera.js`, `src/app/director.js` | |
