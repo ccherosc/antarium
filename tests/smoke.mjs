@@ -182,6 +182,13 @@ async function runMode(mode) {
     if (s.pop <= 0) problems.push('no ants alive');
     if (s.badAnts > 0) problems.push(`${s.badAnts} ants have a non-finite position`);
     if (s.colours < 20) problems.push(`canvas looks blank (${s.colours} distinct colours)`);
+    // the world is the size the mode's row asks for (width, height, surface row, colony column)
+    const size = await page.evaluate(() => {
+      const { sim: { world }, CONFIG: C } = window.__pa;
+      return [world.width, world.height, C.SURFACE_ROW, C.COLONY_X].join(',');
+    });
+    const w = MODE_TABLE[mode].world;
+    if (size !== [w.w, w.h, w.surface, w.colonyX].join(',')) problems.push(`world is ${size}, the mode asks for ${w.w},${w.h},${w.surface},${w.colonyX}`);
     await shot(page, mode);
 
     // Save the way a player does, paused so the numbers hold still, then come back. The peak is

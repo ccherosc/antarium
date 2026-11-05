@@ -22,6 +22,7 @@ export const MODES = {
     pregrow: true,            // a new colony is grown into a busy nest before the first frame
     catchUp: true,            // a resumed colony lives on through the time the player was away
     fpsCap: 30,               // frames per second the farm is drawn at, until the player picks a cap
+    world: { w: 240, h: 160, surface: 20, colonyX: 120 },   // tiles; set into CONFIG once at boot (src/main.js)
     intro: null,              // news line shown when the farm starts
   },
   survival: {
@@ -30,6 +31,7 @@ export const MODES = {
     digSpeed: 3, floors: null, stress: true, foodSpawnTicks: null,
     foodScalesWithColony: false, dewScalesWithColony: false, autoTour: false, moments: false, showConditions: true, gameOver: true,
     pregrow: false, catchUp: false, fpsCap: 60,
+    world: { w: 240, h: 160, surface: 20, colonyX: 120 },
     intro: 'Survival — keep the queen alive',
   },
 };

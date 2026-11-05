@@ -1,19 +1,26 @@
 import { CONFIG } from '../config.js';
 
 const TS = CONFIG.TILE_SIZE;
-const WORLD_W = CONFIG.WORLD_WIDTH * TS;
-const WORLD_H = CONFIG.WORLD_HEIGHT * TS;
 
 // Room kept around the farm for its frame and the shelf it stands on, in tiles
 const PAD_X = 5, PAD_TOP = 4, PAD_BOTTOM = 10;
-const BOX_W = WORLD_W + PAD_X * 2 * TS;
-const BOX_H = WORLD_H + (PAD_TOP + PAD_BOTTOM) * TS;
+
+// The world's size is the mode's (src/main.js sets it before the camera is built), so these
+// are worked out in the constructor rather than when the module loads
+let WORLD_W, WORLD_H, BOX_W, BOX_H;
 
 // Where the camera sits when the whole farm is in view (world pixels)
-export const HOME = { x: WORLD_W / 2, y: (WORLD_H + (PAD_BOTTOM - PAD_TOP) * TS) / 2 };
+export const HOME = { x: 0, y: 0 };
 
 export class Camera {
   constructor(canvasWidth, canvasHeight) {
+    WORLD_W = CONFIG.WORLD_WIDTH * TS;
+    WORLD_H = CONFIG.WORLD_HEIGHT * TS;
+    BOX_W = WORLD_W + PAD_X * 2 * TS;
+    BOX_H = WORLD_H + (PAD_TOP + PAD_BOTTOM) * TS;
+    HOME.x = WORLD_W / 2;
+    HOME.y = (WORLD_H + (PAD_BOTTOM - PAD_TOP) * TS) / 2;
+
     this.cw = canvasWidth;
     this.ch = canvasHeight;
 

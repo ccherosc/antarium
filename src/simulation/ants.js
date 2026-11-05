@@ -5,16 +5,17 @@ import { Nav, FAR } from './nav.js';
 
 let nextId = 1;
 
-const W = CONFIG.WORLD_WIDTH, H = CONFIG.WORLD_HEIGHT;
-const SR = CONFIG.SURFACE_ROW, GT = CONFIG.GLASS_THICKNESS, CX = CONFIG.COLONY_X;
-const SKY = SR * W;           // tile indices below this are above ground
-const NEST = (SR + 2) * W;    // …and from here on down is the nest proper
+// The world's size is the mode's (src/main.js sets it before the colony is made), so these
+// are filled in by the AntSystem constructor rather than when the module loads
+let W, H, SR, GT, CX;
+let SKY;                      // tile indices below this are above ground
+let NEST;                     // …and from here on down is the nest proper
 const TAU = Math.PI * 2;
 
 // The eight neighbours of a tile — sides first, then corners
 const NX = [1, -1, 0, 0, 1, 1, -1, -1];
 const NY = [0, 0, 1, -1, 1, -1, 1, -1];
-const NO = NX.map((dx, n) => dx + NY[n] * W);
+const NO = new Array(8);      // index offsets, set with W
 const NL = NX.map((dx, n) => Math.hypot(dx, NY[n]));
 const NA = NX.map((dx, n) => Math.atan2(NY[n], dx));
 const PICK = new Float32Array(8);
@@ -84,6 +85,10 @@ export function makeAnt(role, x, y) {
 
 export class AntSystem {
   constructor(world) {
+    W = CONFIG.WORLD_WIDTH; H = CONFIG.WORLD_HEIGHT;
+    SR = CONFIG.SURFACE_ROW; GT = CONFIG.GLASS_THICKNESS; CX = CONFIG.COLONY_X;
+    SKY = SR * W; NEST = (SR + 2) * W;
+    for (let n = 0; n < 8; n++) NO[n] = NX[n] + NY[n] * W;
     this.world = world;
     this.nav = world.nav || new Nav(world);
     this.ants = [];

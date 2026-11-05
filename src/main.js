@@ -20,7 +20,7 @@ import { CrashDialog } from './ui/crashDialog.js';
 import { PauseMenu } from './ui/pauseMenu.js';
 import { GameState } from './gameState.js';
 import { MODES, rules } from './modes.js';
-import { CONFIG } from './config.js';
+import { CONFIG, applyWorldSize } from './config.js';
 import { settings } from './settings.js';
 import { logEvent, on } from './events.js';
 import { hasSave, getSaveInfo, saveGame, loadGame, deleteSave } from './saveLoad.js';
@@ -39,18 +39,15 @@ const canvas = document.getElementById('gameCanvas');
 
 let hud = null;   // made once the mode is known
 
+let camera = null, renderer = null;   // made once the mode, and so the world's size, is known
+
 // The camera, the HUD and the mouse all work in window pixels. Low quality only gives the canvas
 // fewer pixels than that, and the browser stretches it back up.
-const camera   = new Camera(window.innerWidth, window.innerHeight);
-const renderer = new Renderer(canvas);
 function fitWindow() {
   camera.resize(window.innerWidth, window.innerHeight);
   renderer.resize(window.innerWidth, window.innerHeight, settings.get('quality') === 'low' ? CONFIG.LOW_QUALITY_SCALE : 1);
   hud?.layout();
 }
-fitWindow();
-window.addEventListener('resize', fitWindow);
-
 const dashboard = new Dashboard();
 
 // A browser keeps a page silent until the player has touched it, so the sound starts with the first
@@ -130,6 +127,14 @@ function pickMode() {
 const settingsMenu = new SettingsMenu();
 new TitleScreen({ settingsMenu });
 const shouldLoad = await pickMode();
+
+// The world's size is the mode's. A page load runs one mode (changing it reloads the page), so
+// CONFIG is set once here, before anything that reads the size is built.
+applyWorldSize(rules().world);
+camera   = new Camera(window.innerWidth, window.innerHeight);
+renderer = new Renderer(canvas);
+fitWindow();
+window.addEventListener('resize', fitWindow);
 const savedTs = shouldLoad ? getSaveInfo(GameState.mode)?.ts : undefined;   // when it was last saved
 
 let sim = createSim();

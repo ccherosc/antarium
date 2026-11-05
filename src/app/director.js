@@ -3,8 +3,8 @@ import { HOME } from './camera.js';
 import { on } from '../events.js';
 
 const TS = CONFIG.TILE_SIZE;
-const W = CONFIG.WORLD_WIDTH, H = CONFIG.WORLD_HEIGHT;
-const SR = CONFIG.SURFACE_ROW, CX = CONFIG.COLONY_X;
+// Set from the mode's world size by the Director constructor (src/main.js sets it first)
+let W, H, SR, CX;
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[(Math.random() * a.length) | 0];
@@ -49,6 +49,7 @@ const ERRANDS = {
 // travels and pushes in again, the further the journey the further back.
 export class Director {
   constructor(camera, sim) {
+    W = CONFIG.WORLD_WIDTH; H = CONFIG.WORLD_HEIGHT; SR = CONFIG.SURFACE_ROW; CX = CONFIG.COLONY_X;
     this.camera = camera;
     this.sim = sim;
 

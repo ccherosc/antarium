@@ -7,9 +7,8 @@ import { Effects } from './effects.js';
 import { CONFIG, ROOM } from '../config.js';
 
 const TS = CONFIG.TILE_SIZE;
-const GT = CONFIG.GLASS_THICKNESS;
-const SR = CONFIG.SURFACE_ROW;
-const CX = CONFIG.COLONY_X;
+// Set from the mode's world size by the Renderer constructor (src/main.js sets it first), not when the module loads
+let GT, SR, CX;
 
 const SEEDS = ['#e8b830', '#d89a28', '#f0d060', '#b87820', '#a8b040'];
 
@@ -23,6 +22,7 @@ const WOOD = {
 
 export class Renderer {
   constructor(canvas) {
+    GT = CONFIG.GLASS_THICKNESS; SR = CONFIG.SURFACE_ROW; CX = CONFIG.COLONY_X;
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.w = canvas.width;     // the size the farm is laid out in, in window pixels (see resize)

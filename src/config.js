@@ -53,6 +53,12 @@ export const CARRY = { NONE: 0, FOOD: 1, WATER: 2, DIRT: 3, EGG: 4 };
 // Chamber purpose — same ids world.chamberType has always used
 export const ROOM = { GENERIC: 0, QUEEN: 1, NURSERY: 2, FOOD: 3, DEEP: 4 };
 
+// A mode's world size (its row in src/modes.js), copied in once at boot before anything is built
+export function applyWorldSize(w) {
+  CONFIG.WORLD_WIDTH = w.w; CONFIG.WORLD_HEIGHT = w.h;
+  CONFIG.SURFACE_ROW = w.surface; CONFIG.COLONY_X = w.colonyX;
+}
+
 export const CONFIG = {
   WORLD_WIDTH: 240,
   WORLD_HEIGHT: 160,

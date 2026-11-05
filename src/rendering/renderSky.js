@@ -4,9 +4,10 @@ import { CONFIG } from '../config.js';
 // clouds, then the mound, the grass and whatever is lying on the surface.
 
 const TS = CONFIG.TILE_SIZE;
-const GT = CONFIG.GLASS_THICKNESS;
-const SR = CONFIG.SURFACE_ROW;
-const CX = CONFIG.COLONY_X;
+// Set from the mode's world size by drawSky and drawSurface (src/main.js sets it before the first
+// frame), not when the module loads
+let GT, SR, CX;
+const sizeUp = () => { GT = CONFIG.GLASS_THICKNESS; SR = CONFIG.SURFACE_ROW; CX = CONFIG.COLONY_X; };
 
 // Sky colours through the day: phase, then top / middle / horizon
 const KEYS = [
@@ -101,6 +102,7 @@ function drawCloud(ctx, x, y, w, h, n, seed) {
 
 // t: seconds of real time (twinkle), drift: how far the clouds have blown
 export function drawSky(ctx, camera, world, sky, t, drift) {
+  sizeUp();
   const [x0, y0] = camera.worldToScreen(GT * TS, GT * TS);
   const [x1, y1] = camera.worldToScreen((world.width - GT) * TS, SR * TS);
   if (x1 <= 0 || x0 >= camera.cw || y1 <= 0 || y0 >= camera.ch) return;
@@ -206,6 +208,7 @@ export function drawSky(ctx, camera, world, sky, t, drift) {
 
 // The mound, the grass and anything lying on the ground
 export function drawSurface(ctx, camera, world, sky, t) {
+  sizeUp();
   const u = TS * camera.zoom, W = world.width, H = world.hillH;
   const [ox, oy] = camera.worldToScreen(0, SR * TS);
   if (oy < -u * 2 || oy - u * 12 > camera.ch) return;

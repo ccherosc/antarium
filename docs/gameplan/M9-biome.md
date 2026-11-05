@@ -127,6 +127,23 @@ pixel-for-pixel the same as on `master` (compare a couple with a quick image dif
 eye side by side); and a temporary local change of Zen's row to `w: 300` gives a wider
 tank that draws, plays and saves with no errors. Revert that change before committing.
 
+**As built.**
+- Every mode row has `world: { w, h, surface, colonyX }`; `applyWorldSize()` in `config.js`
+  copies it into `CONFIG` in `main.js` straight after `pickMode()`.
+- The camera and the renderer used to be built at the top of `main.js`, before the mode was
+  known. They are now built after `applyWorldSize()`, beside `fitWindow()` and its resize
+  listener. Nothing touched them earlier.
+- `camera.js`: `HOME` is still the same exported object, but its `x` and `y` are filled in by
+  the `Camera` constructor, along with `WORLD_W/H` and `BOX_W/H`.
+- `ants.js`: the neighbour offsets `NO`, plus `SKY` and `NEST`, depend on the width too. All
+  three are set in the `AntSystem` constructor.
+- `renderSky.js` has no class, so `drawSky` and `drawSurface` both call `sizeUp()`.
+- The size check is part of each mode's smoke run (`runMode`), rather than a separate
+  `worldsize` check. It compares the world's width, height, surface row and colony column
+  with the mode's row.
+- Checked with Zen temporarily set to 300×170 (surface 26, colony 150): the tank is wider,
+  centred and framed, the colony plays, saves and resumes, and there are no errors. Reverted.
+
 ---
 
 ## T9.2 [S] The simulation at three times the size

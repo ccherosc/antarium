@@ -2,9 +2,8 @@ import { CONFIG } from '../config.js';
 import { hash, glowSprite } from './renderSky.js';
 
 const TS = CONFIG.TILE_SIZE;
-const GT = CONFIG.GLASS_THICKNESS;
-const SR = CONFIG.SURFACE_ROW;
-const CX = CONFIG.COLONY_X;
+// Set from the mode's world size by the Effects constructor (src/main.js sets it first), not when the module loads
+let GT, SR, CX;
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const WING = ['#f6f2e6', '#f4d458', '#9cc8f4', '#f0a0b8'];
@@ -14,6 +13,7 @@ const WING = ['#f6f2e6', '#f4d458', '#9cc8f4', '#f0a0b8'];
 // Positions are in tiles, times in seconds.
 export class Effects {
   constructor() {
+    GT = CONFIG.GLASS_THICKNESS; SR = CONFIG.SURFACE_ROW; CX = CONFIG.COLONY_X;
     this.t = 0;
     this.parts  = [];   // specks: { x, y, vx, vy, g, life, max, r, c }
     this.sparks = [];   // the same, drawn as light
