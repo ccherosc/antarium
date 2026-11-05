@@ -147,25 +147,32 @@ stronger model write a detailed spec per update before Sonnet builds it.
 - [ ] U7 Species packs (harvester, carpenter, leafcutter)
 
 ### M8 — Wars of nature (Zen part three) → `M8-wars.md`
-A second farm on the shelf, a rival black tribe, wars as short films, and the wars of the
-meadow. Needs T2.8–T2.9; the Survival tickets (T8.14–T8.17) need M5 T5.1–T5.6.
+A second farm on the shelf, a rival black tribe, wars as short films on a five-level
+disaster ladder (skirmish → breach → flood → devastation → exodus; the colony in Zen never
+dies), and the wars of the meadow. Needs T2.8–T2.9; Survival tickets (T8.20–T8.23) need M5.
 - [ ] T8.1 [S] The neighbours' farm on the shelf (light sim, cached render, shelf wide shot)
 - [ ] T8.2 [S] Tribes and palettes; the neighbours' crowd
 - [ ] T8.3 [S] The tube, warriors, and the scouts moment
 - [ ] T8.4 [S] Fights that read in pixels (duels, gang-ups, spray, the fallen)
-- [ ] T8.5 [S] The war as a film (acts, letterbox, war shots)
-- [ ] T8.6 [S] Zen war rules, the `wars` setting, stories
-- [ ] T8.7 [S] The sound of war (march, clash, drum layer)
-- [ ] T8.8 [S] Nature war: the marauders (army-ant sweep, plugging the gate)
-- [ ] T8.9 [S] Nature war: the aphid ranch and the ladybug
-- [ ] T8.10 [S] Small wars of nature (antlion, spider wasp, dragonflies, mantis)
-- [ ] T8.11 [S] Our turn: the counter-raid
-- [ ] T8.12 [H] The chronicle of the shelf
-- [ ] T8.13 [S] Stability and performance pass for wars
-- [ ] T8.14 [S] Survival: the neighbours are hostile (raids, brood theft)
-- [ ] T8.15 [H] Survival: war tools and cards
-- [ ] T8.16 [S] Survival: counter-raid and conquest scenarios
-- [ ] T8.17 [H] Survival: nature as threats
+- [ ] T8.5 [S] The war as a film (acts, letterbox, level 1 script)
+- [ ] T8.6 [S] The ladder, the Zen guarantees and the `wars` setting
+- [ ] T8.7 [S] Level 2 groundwork: war in the tunnels, brood evacuation
+- [ ] T8.8 [S] Level 2: the nursery falls, rubble, the rebuild (save bump)
+- [ ] T8.9 [S] Level 3: the flood, the dead carried to the midden (save bump)
+- [ ] T8.10 [S] Level 4: devastation, tunnel cave-ins and re-routing, the queen attacked
+- [ ] T8.11 [S] Level 5 (suggested, confirm first): the exodus
+- [ ] T8.12 [S] The days after (recovery arc)
+- [ ] T8.13 [S] The sound of war
+- [ ] T8.14 [S] Nature war: the marauders (army-ant sweep, plugging the gate)
+- [ ] T8.15 [S] Nature war: the aphid ranch and the ladybug
+- [ ] T8.16 [S] Small wars of nature (antlion, spider wasp, dragonflies, mantis)
+- [ ] T8.17 [S] Our turn: the counter-raid
+- [ ] T8.18 [H] The chronicle of the shelf
+- [ ] T8.19 [S] Stability and performance pass for wars
+- [ ] T8.20 [S] Survival: the neighbours are hostile (the ladder by day, no guarantees)
+- [ ] T8.21 [H] Survival: war tools and cards
+- [ ] T8.22 [S] Survival: counter-raid and conquest scenarios
+- [ ] T8.23 [H] Survival: nature as threats
 
 ---
 
@@ -183,7 +190,7 @@ meadow. Needs T2.8–T2.9; the Survival tickets (T8.14–T8.17) need M5 T5.1–T
 | Flow-field navigation | `src/simulation/nav.js` | |
 | Surface creatures | `src/simulation/creatures.js` | `_trySpawn()` |
 | Moments (fireflies, earthworm, beetle, …) | `src/simulation/moments/` | `index.js` lists `MOMENTS`; one file per moment |
-| Wars (M8, planned) | `src/simulation/war/` | `tribes.js`, `rivalFarm.js` (`sim.rival`), `army.js` (`sim.war`), `campaign.js` |
+| Wars (M8, planned) | `src/simulation/war/` | `tribes.js`, `rivalFarm.js` (`sim.rival`), `army.js` (`sim.war`), `ladder.js`, `campaign.js`, `damage.js` |
 | Stats for the dashboard | `src/simulation/stats.js` | |
 | Fixed-step loop, speed | `src/app/gameLoop.js` | `SIM_STEP` 16 ms, `setSpeed(0..8)` |
 | Camera / cinematic tour | `src/app/camera.js`, `src/app/director.js` | |
