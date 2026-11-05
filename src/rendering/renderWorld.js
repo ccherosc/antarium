@@ -289,7 +289,7 @@ export function renderWorld(camera, world) {
   // A colony that ran before its first frame (grown or caught up) has changed a few thousand
   // tiles, but a canvas nobody has drawn on needs all of them
   if (blank || world.dirty) {
-    const full = blank || world.dirtyTiles.size === 0 || world.dirtyTiles.size > 6000;
+    const full = blank || world.dirtyTiles.size === 0 || world.dirtyTiles.size > world.size * CONFIG.WORLD_FULL_REDRAW_SHARE;
     if (full) {
       for (let y = 0; y < world.height; y++)
         for (let x = 0; x < world.width; x++)

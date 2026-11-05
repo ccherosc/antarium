@@ -125,6 +125,9 @@ export const CONFIG = {
   PHER_HOME_WEIGHT:   6.0,     // how hard carrying ants follow home trail
   FORAGER_TIMEOUT:    700,     // ticks before a forager gives up the search
 
+  // ── Navigation — src/simulation/nav.js ───────────────────────────────────
+  NAV_FIELD_BUDGET_MB: 12,     // memory the flow fields may hold; Zen's world fits the most (140) in it
+
   // ── Colony stress ────────────────────────────────────────────────────────
   STRESS_FOOD_LOW:   280,      // food below this triggers mild stress
   STRESS_FOOD_CRIT:  80,       // food below this = critical
@@ -150,6 +153,7 @@ export const CONFIG = {
 
   // ── Power saving — low quality (src/rendering/renderer.js, src/main.js) ──
   LOW_QUALITY_SCALE: 0.5,      // the canvas holds this fraction of the window's pixels, each way, and the browser stretches it up
+  WORLD_FULL_REDRAW_SHARE: 0.15,   // more changed tiles than this share of the world, and it is all redrawn (src/rendering/renderWorld.js)
 
   // ── Sound — src/audio/mix.js (what the game asks for), src/audio/audio.js (how it is made) ──
   // A layer's loudness is a gain: 1 is the layer at its full level, and the player's volume comes on top of it.

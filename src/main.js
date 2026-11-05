@@ -32,6 +32,7 @@ import * as audio from './audio/audio.js';
 //   ?debug         expose window.__pa (once the colony is ready) for tests and skip the tutorial
 //   ?mode=<name>   skip the menu and go straight into that mode (resumes its save)
 //   ?new           with ?debug only: wipe that mode's save first (a stray link must never delete a colony)
+//   ?world=WxH[xS] with ?debug only: a world W wide and H tall (surface row S, else the mode's), for tests
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
 
@@ -55,6 +56,14 @@ const dashboard = new Dashboard();
 // one tries again: a key that doesn't count as a touch, like Esc, may have left it locked.
 for (const type of ['pointerdown', 'pointerup', 'keydown']) {
   window.addEventListener(type, () => audio.initAudio(), { capture: true });
+}
+
+// ?debug&world=720x180x30: a world of another size, so tests can try one before a mode has it
+function debugWorld() {
+  const m = DEBUG && /^(\d+)x(\d+)(?:x(\d+))?$/.exec(params.get('world') || '');
+  if (!m) return null;
+  const [w, h] = [+m[1], +m[2]];
+  return { w, h, surface: m[3] ? +m[3] : rules().world.surface, colonyX: w >> 1 };
 }
 
 // A colony is only built once the mode is known — it decides how long ants live
@@ -130,7 +139,7 @@ const shouldLoad = await pickMode();
 
 // The world's size is the mode's. A page load runs one mode (changing it reloads the page), so
 // CONFIG is set once here, before anything that reads the size is built.
-applyWorldSize(rules().world);
+applyWorldSize(debugWorld() || rules().world);
 camera   = new Camera(window.innerWidth, window.innerHeight);
 renderer = new Renderer(canvas);
 fitWindow();

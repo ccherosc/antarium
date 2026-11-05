@@ -9,7 +9,8 @@ export const FAR = 0xFFFF;
 
 const MIN_REBUILD = 20;   // ticks between rebuilds when only the destination moved
 const REFRESH = 120;      // a patched field is rebuilt after this long, to pick up short-cuts
-const MAX_FIELDS = 140;
+const MAX_FIELDS = 140;   // at most this many, and fewer in a big world (NAV_FIELD_BUDGET_MB)
+const MIN_FIELDS = 24;
 
 class Field {
   constructor(dist) {
@@ -27,6 +28,9 @@ export class Nav {
     this.world = world;
     world.nav = this;
     this.fields = new Map();
+    // each field is two bytes a tile, so a big world keeps fewer of them
+    const fit = Math.floor(CONFIG.NAV_FIELD_BUDGET_MB * 1048576 / (2 * world.size));
+    this.maxFields = Math.max(MIN_FIELDS, Math.min(MAX_FIELDS, fit));
     this._pool = [];
     this._q = new Int32Array(world.size);
     this._src = [];
@@ -135,7 +139,7 @@ export class Nav {
     const t = this.world.tick;
     let f = this.fields.get(key);
     if (!f) {
-      if (this.fields.size >= MAX_FIELDS) this._evict();
+      if (this.fields.size >= this.maxFields) this._evict();
       f = new Field(this._pool.pop() || new Uint16Array(this.world.size));
       this.fields.set(key, f);
     }

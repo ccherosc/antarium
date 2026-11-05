@@ -193,6 +193,22 @@ fix is needed), new `tests/scale.mjs`, `package.json` (a `scale` script).
 3 × Zen's, the heap at most 2.5 × Zen's, and the save under 1.5 MB; `npm test` still passes
 and Zen's numbers are within noise of `master`'s. Put the table in the commit message.
 
+**As built.** Measured over 10 days with `npm run scale`:
+```
+   world     size   pop  ms/tick     p99    nav  fields  most  heapMB  saveKB
+     zen  240x160   408    0.075   0.145    27%      74 74/140    13.2     123
+   biome  720x180   406    0.105   0.365    29%      40 48/48    27.2     312
+biome / zen: 1.41x the time a tick, 2.05x the heap, 2.54x the save
+```
+- The debug parameter is `&world=WxH[xS]`. `S` is the surface row; it defaults to the mode's.
+  The colony column is `W / 2`. No temporary `wide` mode was needed.
+- Nav now keeps `maxFields`, worked out from `NAV_FIELD_BUDGET_MB` (12) and clamped to
+  24–140. Zen keeps 140; 720×180 gets 48 and reaches it.
+- Nav rebuild time per tick at 720×180 is about 1.5× Zen's, under the 2× trigger, so
+  `NAV_REBUILDS_PER_TICK` was not added.
+- The save is 312 KB, so packing was left alone.
+- `WORLD_FULL_REDRAW_SHARE: 0.15` replaces the fixed 6000 in `renderWorld.js`.
+
 ---
 
 ## T9.3 [S] The Biome mode
