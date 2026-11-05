@@ -486,8 +486,9 @@ async function runTitle() {
       wide: document.documentElement.scrollWidth > innerWidth,
     }));
     check(t.version === `v${VERSION}`, `the title shows "${t.version}", wanted v${VERSION}`);
-    check(t.cards.join() === 'Zen,Survival', `the mode cards are ${t.cards.join(', ')}, wanted Zen, Survival`);
-    check(t.pitches.every(Boolean) && t.pitches.length === 2, 'a mode card has no one-line pitch');
+    const labels = Object.values(MODE_TABLE).map(m => m.label);   // one card a mode, in the table's order
+    check(t.cards.join() === labels.join(), `the mode cards are ${t.cards.join(', ')}, wanted ${labels.join(', ')}`);
+    check(t.pitches.every(Boolean) && t.pitches.length === labels.length, 'a mode card has no one-line pitch');
     check(!/screensaver/i.test(t.text), 'the title still says Screensaver');
     check(t.strip > 100, `the strip of ants is ${t.strip} pixels wide`);
     check(!t.wide, 'the title makes the page scroll sideways');
@@ -1999,10 +2000,11 @@ async function runMoments() {
     await night(page);
     const started = await page.evaluate(async () => {
       const { on } = await import('/src/events.js');
+      const { sim } = window.__pa;
+      if (sim.moments.active) sim.moments._end();   // one that came on its own would end in the log
       window.__momentLog = [];
       on('moment', e => window.__momentLog.push(['moment', e.id]));
       on('momentEnd', e => window.__momentLog.push(['end', e.id]));
-      const { sim } = window.__pa;
       return sim.moments.force('fireflies', sim);
     });
     check(started, 'fireflies would not start');

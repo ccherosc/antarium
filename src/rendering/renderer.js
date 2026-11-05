@@ -5,6 +5,7 @@ import { drawCreatures } from './renderCreatures.js';
 import { drawMoments } from './renderMoments.js';
 import { Effects } from './effects.js';
 import { CONFIG, ROOM } from '../config.js';
+import { rules } from '../modes.js';
 
 const TS = CONFIG.TILE_SIZE;
 // Set from the mode's world size by the Renderer constructor (src/main.js sets it first), not when the module loads
@@ -25,6 +26,7 @@ export class Renderer {
     GT = CONFIG.GLASS_THICKNESS; SR = CONFIG.SURFACE_ROW; CX = CONFIG.COLONY_X;
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.open = rules().frame === 'open';   // open land: no room, case or glass, and the camera keeps to the land
     this.w = canvas.width;     // the size the farm is laid out in, in window pixels (see resize)
     this.h = canvas.height;
     this.effects = new Effects();
@@ -53,7 +55,12 @@ export class Renderer {
     this.drift += dt * speed;
     this.effects.update(sim, dt * Math.min(1, speed));
 
-    this._drawRoom(ctx, camera, world, sky, w, h);
+    if (this.open) {
+      ctx.fillStyle = '#0a0d13';
+      ctx.fillRect(0, 0, w, h);
+    } else {
+      this._drawRoom(ctx, camera, world, sky, w, h);
+    }
 
     if (this._firstFrame) {
       forceFullRedraw(world);
@@ -98,7 +105,7 @@ export class Renderer {
 
     ctx.restore();
 
-    this._drawFrame(camera, world);
+    if (!this.open) this._drawFrame(camera, world);
     this._drawVignette(ctx, w, h);
     this._drawZoom(ctx, camera);
   }

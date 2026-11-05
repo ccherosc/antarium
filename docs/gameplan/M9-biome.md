@@ -254,6 +254,32 @@ title buttons are styled).
 buttons; Biome starts a busy colony in the middle of a wide flat world; panning reaches
 both ends; Zen and Survival look as before.
 
+**As built.**
+- `land` was not added. Nothing reads it yet, so T9.4 adds it to the three rows with the
+  first code that does. `frame` is in all three rows.
+- The world is 720 wide, as planned: T9.2's numbers did not call for less.
+- The description reads "Out of the glass, into a long strip of country: woods, meadow,
+  a pond, sand and stones. As calm as Zen." The planned one wrapped to five lines in the
+  narrow card. The title cards are `min(270px, (100vw - 96px) / 3)` wide. Biome's colour
+  is `#8cc068`, also on the dashboard badge (`.dash-mode.biome`). The cards fit at 375,
+  800 and 1920 wide with no sideways scroll, and focus goes Zen → Biome → Survival (page
+  order).
+- The frame: open land fills the screen with `#0a0d13` instead of drawing the room, and
+  skips `_drawFrame`.
+- The border tiles are not recoloured, because they are never seen. The camera's
+  `_clamp()` keeps the view inside the border plus one world pixel, so rounding the
+  corner never shows a sliver of it. It runs at the end of every `update()`, so the tour
+  and the sliding panel are held too.
+- `fitZoom()` fits the inner height exactly. Rounding up to whole pixels a tile would
+  hide a sixth of the land, and that zoom is also the closest the player can zoom out.
+  `HOME` is the colony column, halfway down.
+- Tested: from either end at 1600×900 and 1366×768, only tiles 2–717 across and 2–177
+  down are in view. The smoke test's title check now takes the cards from the mode
+  table. The `moments` check now ends a moment that came on its own before forcing the
+  fireflies; one that did so failed the check once.
+- Perf, with Zen's frame cap and quality left as they were: cap 30 uses 62% of cap 60,
+  low quality 47%, both 24%.
+
 ---
 
 ## T9.4 [S] The shape of the land: hills, banks and ponds

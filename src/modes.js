@@ -23,7 +23,18 @@ export const MODES = {
     catchUp: true,            // a resumed colony lives on through the time the player was away
     fpsCap: 30,               // frames per second the farm is drawn at, until the player picks a cap
     world: { w: 240, h: 160, surface: 20, colonyX: 120 },   // tiles; set into CONFIG once at boot (src/main.js)
+    frame: 'glass',           // 'glass': a farm in its case on the shelf; 'open': open land, filled edge to edge
     intro: null,              // news line shown when the farm starts
+  },
+  biome: {
+    label: 'Biome', badge: 'BIOME', cls: 'biome',
+    lifespanMult: 1.5, noStarvation: true, queenHealthFloor: 5, freeEggs: true,
+    digSpeed: 1.5, floors: { food: 200, water: 250 }, stress: false, foodSpawnTicks: 420,
+    foodScalesWithColony: true, dewScalesWithColony: true, autoTour: true, moments: true, showConditions: false, gameOver: false,
+    pregrow: true, catchUp: true, fpsCap: 30,
+    world: { w: 720, h: 180, surface: 30, colonyX: 360 },
+    frame: 'open',
+    intro: null,
   },
   survival: {
     label: 'Survival', badge: 'SURVIVAL', cls: 'survival',
@@ -32,6 +43,7 @@ export const MODES = {
     foodScalesWithColony: false, dewScalesWithColony: false, autoTour: false, moments: false, showConditions: true, gameOver: true,
     pregrow: false, catchUp: false, fpsCap: 60,
     world: { w: 240, h: 160, surface: 20, colonyX: 120 },
+    frame: 'glass',
     intro: 'Survival — keep the queen alive',
   },
 };
