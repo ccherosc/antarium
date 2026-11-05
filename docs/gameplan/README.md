@@ -146,6 +146,51 @@ stronger model write a detailed spec per update before Sonnet builds it.
 - [ ] U6 Hygiene (middens, corpse removal, mold, disease)
 - [ ] U7 Species packs (harvester, carpenter, leafcutter)
 
+### M8 — Wars of nature (Zen part three) → `M8-wars.md`
+A second farm on the shelf, a rival black tribe, wars as short films on a five-level
+disaster ladder (skirmish → breach → flood → devastation → exodus; the colony in Zen never
+dies), and the wars of the meadow. Needs T2.8–T2.9; Survival tickets (T8.20–T8.23) need M5.
+- [ ] T8.1 [S] The neighbours' farm on the shelf (light sim, cached render, shelf wide shot)
+- [ ] T8.2 [S] Tribes and palettes; the neighbours' crowd
+- [ ] T8.3 [S] The tube, warriors, and the scouts moment
+- [ ] T8.4 [S] Fights that read in pixels (duels, gang-ups, spray, the fallen)
+- [ ] T8.5 [S] The war as a film (acts, letterbox, level 1 script)
+- [ ] T8.6 [S] The ladder, the Zen guarantees and the `wars` setting
+- [ ] T8.7 [S] Level 2 groundwork: war in the tunnels, brood evacuation
+- [ ] T8.8 [S] Level 2: the nursery falls, rubble, the rebuild (save bump)
+- [ ] T8.9 [S] Level 3: the flood, the dead carried to the midden (save bump)
+- [ ] T8.10 [S] Level 4: devastation, tunnel cave-ins and re-routing, the queen attacked
+- [ ] T8.11 [S] Level 5 (suggested, confirm first): the exodus
+- [ ] T8.12 [S] The days after (recovery arc)
+- [ ] T8.13 [S] The sound of war
+- [ ] T8.14 [S] Nature war: the marauders (army-ant sweep, plugging the gate)
+- [ ] T8.15 [S] Nature war: the aphid ranch and the ladybug
+- [ ] T8.16 [S] Small wars of nature (antlion, spider wasp, dragonflies, mantis)
+- [ ] T8.17 [S] Our turn: the counter-raid
+- [ ] T8.18 [H] The chronicle of the shelf
+- [ ] T8.19 [S] Stability and performance pass for wars
+- [ ] T8.20 [S] Survival: the neighbours are hostile (the ladder by day, no guarantees)
+- [ ] T8.21 [H] Survival: war tools and cards
+- [ ] T8.22 [S] Survival: counter-raid and conquest scenarios
+- [ ] T8.23 [H] Survival: nature as threats
+
+### M9 — Biome (the colony in the open) → `M9-biome.md`
+A third mode between Zen and Survival: the same calm colony out of the glass, in a long
+strip of country (woodland, meadow, pond, sand, stones), each stretch with its own soil,
+plants, creatures and moments. Zen stays the tank. Needs T2.8–T2.9; T9.11 needs T8.1–T8.6.
+- [ ] T9.1 [S] World size per mode (mode `world` field, lazy size constants)
+- [ ] T9.2 [S] The simulation at three times the size (measure; nav budget, saves, redraws)
+- [ ] T9.3 [S] The Biome mode (mode row, title button, open frame, height-fit camera)
+- [ ] T9.4 [S] The shape of the land: hills, banks and ponds (`terrainH`, save bump)
+- [ ] T9.5 [S] Biomes: the table and the seeded layout (soil per biome)
+- [ ] T9.6 [S] Dressing the land: plants, parallax ridges, fog at the ends
+- [ ] T9.7 [S] Filming a wide world: place shots and journeys
+- [ ] T9.8 [S] Who lives where: creatures and food per biome
+- [ ] T9.9 [S] Moments of the land (frog chorus, dragonfly hatch, leaf fall, …)
+- [ ] T9.10 [S] Release into the wild (copy a Zen colony into Biome)
+- [ ] T9.11 [S] Wars in the open (needs T8.1–T8.6)
+- [ ] T9.12 [S] Stability and performance pass for Biome
+
 ---
 
 ## Code map (where things live)
@@ -161,6 +206,9 @@ stronger model write a detailed spec per update before Sonnet builds it.
 | Clock, weather, dew, nuptial flights | `src/simulation/sky.js` | `_dawn()`, `_weather()`, `_flight()` |
 | Flow-field navigation | `src/simulation/nav.js` | |
 | Surface creatures | `src/simulation/creatures.js` | `_trySpawn()` |
+| Moments (fireflies, earthworm, beetle, …) | `src/simulation/moments/` | `index.js` lists `MOMENTS`; one file per moment |
+| Wars (M8, planned) | `src/simulation/war/` | `tribes.js`, `rivalFarm.js` (`sim.rival`), `army.js` (`sim.war`), `ladder.js`, `campaign.js`, `damage.js` |
+| Biome land (M9, planned) | `src/simulation/land/` | `biomes.js` (`BIOMES`), `layout.js`, `terrain.js` (`world.terrainH`, `world.lift(x)`), `flora.js`, `release.js` |
 | Stats for the dashboard | `src/simulation/stats.js` | |
 | Fixed-step loop, speed | `src/app/gameLoop.js` | `SIM_STEP` 16 ms, `setSpeed(0..8)` |
 | Camera / cinematic tour | `src/app/camera.js`, `src/app/director.js` | |
