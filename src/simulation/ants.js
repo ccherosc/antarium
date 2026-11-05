@@ -565,10 +565,10 @@ export class AntSystem {
     return r < 0 && R[i] === id ? 0 : r;   // can't get any closer, but it is in the room: good enough
   }
 
-  // One step along the ground. False at the edge of the farm.
+  // One step along the ground. False at the edge of the farm, or at a pond's bank.
   _surfaceStep(ant, ix, dir) {
     const nx = ix + dir;
-    if (nx < GT + 1 || nx > W - GT - 2) return false;
+    if (nx < GT + 1 || nx > W - GT - 2 || this.world.pond[nx]) return false;
     this._way(ant, nx, this.world.groundRow(nx));
     return true;
   }

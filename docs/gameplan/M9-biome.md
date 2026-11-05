@@ -328,6 +328,24 @@ both ends; Zen and Survival look as before.
 `&pond=1` a pond they walk round; Zen's screenshots are unchanged; the old save fixture
 loads; `npm run soak` (simulation) passes for Biome.
 
+**As built.**
+- `rules().land` is a new mode field (Biome true, the others false); `makeTerrain(world, rng, opts)` in
+  `src/simulation/land/terrain.js` runs from `_generate` when it is set. `opts.ponds` lists the columns
+  to put a pond's middle at; T9.5's layouts will fill it. `?debug&pond=1` gives one 80 tiles right of the colony.
+- **Deviation from the plan: nothing new is saved.** `terrainH` (raised SOIL tiles, hardness
+  `TERRAIN_HARDNESS` 255) and `pond` (new `TILE.POND`, `POND_DEPTH` rows of water) are read back from the tiles
+  in `rebuildDerived`, as is `wet` (pond columns plus `POND_KEEP_OUT` either side). The save shape is the
+  same, so no VERSION bump; old saves derive zeros and the fixture still resumes.
+- `world.lift(x)` = `terrainH + pond + hillH`; `groundRow`/`groundY`, the rain, lightning and fireflies use it.
+  Water is neither OPEN nor GROUND: air above it is not passable, `_surfaceStep` turns ants back at the bank,
+  food and puddles skip it, galleries and prospects are never planned under `wet`, and a creature that
+  reaches a pond turns round (no swimming: T9.8 may want a bridge or a drink).
+- The land is drawn on the world canvas like soil (humus skin on top, soil texture, pond shine); turf,
+  grass and flowers follow `terrainH`; `_lightLand` in the renderer gives it the day's sun and the night tint.
+- Fixed two T9.1 misses: `renderWorld.js` and `renderAnts.js` captured `SURFACE_ROW` at module load.
+- Tested: `npm test` passes; with `&pond=1` no ant stood on the pond in 15 s at 8x speed. Perf was noisy
+  (Zen drew 33 fps instead of 51), so the ratios are not comparable with T9.3's.
+
 ---
 
 ## T9.5 [S] Biomes: the table and the layout

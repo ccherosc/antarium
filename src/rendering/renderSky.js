@@ -210,6 +210,7 @@ export function drawSky(ctx, camera, world, sky, t, drift) {
 export function drawSurface(ctx, camera, world, sky, t) {
   sizeUp();
   const u = TS * camera.zoom, W = world.width, H = world.hillH;
+  const L = world.terrainH, P = world.pond;   // open land's hills and ponds: the turf and grass sit on top
   const [ox, oy] = camera.worldToScreen(0, SR * TS);
   if (oy < -u * 2 || oy - u * 12 > camera.ch) return;
   const X = x => ox + x * u;
@@ -275,13 +276,13 @@ export function drawSurface(ctx, camera, world, sky, t) {
   }
 
   // ── Turf along the ground line ──
-  const bare = x => H[x] > 0 || (x >= CX - 1 && x <= CX + 2);
+  const bare = x => H[x] > 0 || P[x] > 0 || (x >= CX - 1 && x <= CX + 2);
   ctx.fillStyle = shade([66, 108, 32]);
   for (let x = xa; x <= xb; x++) {
     if (bare(x)) continue;
     let e = x;
-    while (e < xb && !bare(e + 1)) e++;
-    ctx.fillRect(X(x), oy - 0.5, (e - x + 1) * u + 0.5, Math.max(1.5, u * 0.34));
+    while (e < xb && !bare(e + 1) && L[e + 1] === L[x]) e++;
+    ctx.fillRect(X(x), oy - L[x] * u - 0.5, (e - x + 1) * u + 0.5, Math.max(1.5, u * 0.34));
     x = e;
   }
 
@@ -319,15 +320,16 @@ export function drawSurface(ctx, camera, world, sky, t) {
   for (let gi = 0; gi < 3; gi++) {
     ctx.beginPath();
     for (let x = xa; x <= xb; x++) {
-      if (H[x] || (x >= CX - 1 && x <= CX + 2)) continue;
+      if (H[x] || P[x] || (x >= CX - 1 && x <= CX + 2)) continue;
+      const gy = oy - L[x] * u;
       for (let b = 0; b < 3; b++) {
         const n = hash(x * 3 + b);
         if (((n * 97) | 0) % 3 !== gi) continue;
         const bx = x + 0.16 + b * 0.32 + (n - 0.5) * 0.2;
         const bh = 0.35 + hash(x * 13 + b * 5 + 2) * 0.95;
         const sway = Math.sin(t * 1.6 + x * 0.4 + b) * wind * bh + (n - 0.5) * 0.3;
-        ctx.moveTo(X(bx), oy);
-        ctx.quadraticCurveTo(X(bx), oy - bh * u * 0.6, X(bx + sway), oy - bh * u);
+        ctx.moveTo(X(bx), gy);
+        ctx.quadraticCurveTo(X(bx), gy - bh * u * 0.6, X(bx + sway), gy - bh * u);
       }
     }
     ctx.strokeStyle = shade(GREENS[gi]);
@@ -337,14 +339,15 @@ export function drawSurface(ctx, camera, world, sky, t) {
   // ── A flower here and there ──
   for (let x = xa; x <= xb; x++) {
     const f = hash(x * 53 + 11);
-    if (f > 0.075 || H[x] || (x >= CX - 3 && x <= CX + 4)) continue;
+    if (f > 0.075 || H[x] || P[x] || (x >= CX - 3 && x <= CX + 4)) continue;
     const bh = 1.15 + hash(x * 7 + 3) * 0.8;
     const sway = Math.sin(t * 1.3 + x * 0.4) * wind * bh * 0.7;
-    const fx = X(x + 0.5 + sway), fy = oy - bh * u;
+    const gy = oy - L[x] * u;
+    const fx = X(x + 0.5 + sway), fy = gy - bh * u;
     ctx.strokeStyle = shade(GREENS[2]);
     ctx.beginPath();
-    ctx.moveTo(X(x + 0.5), oy);
-    ctx.quadraticCurveTo(X(x + 0.5), oy - bh * u * 0.6, fx, fy);
+    ctx.moveTo(X(x + 0.5), gy);
+    ctx.quadraticCurveTo(X(x + 0.5), gy - bh * u * 0.6, fx, fy);
     ctx.stroke();
     const s = Math.max(2, u * 0.5);
     ctx.fillStyle = shade(FLOWERS[((f * 997) | 0) % 4]);

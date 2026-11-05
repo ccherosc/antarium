@@ -1,7 +1,7 @@
 import { TILE, CONFIG } from '../config.js';
 
 const C = CONFIG;
-const SR = C.SURFACE_ROW;
+let SR = C.SURFACE_ROW;   // the mode's (src/main.js sets it before the first frame), so read again in ensureOffscreen
 
 let offscreen = null;
 let offCtx = null;
@@ -58,6 +58,7 @@ function ensureOffscreen(world) {
   const w = world.width * C.TILE_SIZE;
   const h = world.height * C.TILE_SIZE;
   if (offscreen) return false;
+  SR = C.SURFACE_ROW;
   offscreen = document.createElement('canvas');
   offscreen.width = w;
   offscreen.height = h;
@@ -97,11 +98,13 @@ function tileColor(type, x, y, world) {
       return y === SR ? `rgb(${92+j|0},${64+j|0},${32+j|0})` : `rgb(${124+j|0},${86+j|0},${44+j|0})`;
 
     case TILE.SOIL: {
+      // the top of a hill wears the same skin of humus as the lawn
+      if (y === SR - world.terrainH[x]) return `rgb(${92+j|0},${64+j|0},${32+j|0})`;
       // Warm sunlit topsoil shading down to dark damp clay, laid down in wavy strata
       const wave = y + Math.sin(x * 0.045) * 3.2 + Math.sin(x * 0.118 + 2) * 1.6;
       const band = Math.sin(wave * 0.52);
       // loose soil is a shade paler than the compacted lumps the tunnels wind around
-      const s = j + (band > 0.8 ? -10 : band < -0.88 ? 7 : 0) + (70 - world.hardness[world.idx(x, y)]) * 0.12;
+      const s = j + (band > 0.8 ? -10 : band < -0.88 ? 7 : 0) + (70 - (y < SR ? 70 : world.hardness[world.idx(x, y)])) * 0.12;   // hills are never dug: no lumps to show
       return `rgb(${168 - 94 * k + s | 0},${120 - 72 * k + s | 0},${64 - 40 * k + s * 0.6 | 0})`;
     }
 
@@ -116,6 +119,8 @@ function tileColor(type, x, y, world) {
 
     case TILE.ROCK:    return `rgb(${114 - 40 * k + j * 2 | 0},${110 - 40 * k + j * 2 | 0},${106 - 36 * k + j * 2 | 0})`;
     case TILE.GLASS:   return '#1a2530';
+    case TILE.POND:    // a paler skin where the water meets the air
+      return y === SR - world.pond[x] ? `rgb(${74+j|0},${142+j|0},${198+j|0})` : `rgb(${42+j|0},${100+j|0},${162+j|0})`;
     case TILE.EGG:     return '#f0e8c8';
     default:           return '#8a6432';
   }
@@ -128,8 +133,9 @@ function drawTile(ctx, tile, x, y, world) {
   let type = tile, item = 0;
 
   // Above the ground the canvas stays clear: the sky, the mound and whatever is lying
-  // on the grass are drawn live by the renderer
-  if (type !== TILE.GLASS && (y < SR || type === TILE.AIR || type === TILE.ANTHILL)) {
+  // on the grass are drawn live by the renderer. Hills and ponds are drawn here, like the soil.
+  if (type === TILE.AIR || type === TILE.ANTHILL ||
+      (y < SR && type !== TILE.GLASS && type !== TILE.SOIL && type !== TILE.POND)) {
     ctx.clearRect(px, py, ts, ts);
     return;
   }
@@ -139,6 +145,7 @@ function drawTile(ctx, tile, x, y, world) {
     item = type;
     type = world.under[i] === TILE.CHAMBER ? TILE.CHAMBER : TILE.TUNNEL;
   }
+  if (type === TILE.SURFACE && world.terrainH[x]) type = TILE.SOIL;   // under a hill the turf is buried
 
   ctx.fillStyle = tileColor(type, x, y, world);
   ctx.fillRect(px, py, ts, ts);
@@ -160,10 +167,11 @@ function drawTile(ctx, tile, x, y, world) {
     return;
   }
 
-  // Roots trailing down from the turf
-  if ((type === TILE.SOIL || type === TILE.SURFACE) && y <= SR + 6) {
+  // Roots trailing down from the turf, wherever its top is
+  const top = SR - world.terrainH[x];
+  if ((type === TILE.SOIL || type === TILE.SURFACE) && y <= top + 6) {
     const r = _hash(x + 13, 7);
-    if (r < 60 && y - SR - 1 <= (r & 3) + 1) {
+    if (r < 60 && y - top - 1 <= (r & 3) + 1) {
       ctx.fillStyle = 'rgba(48,30,12,0.5)';
       ctx.fillRect(px + 1 + (((r >> 2) ^ y) & 1), py, 1, ts);
     }
@@ -216,6 +224,11 @@ function drawTile(ctx, tile, x, y, world) {
         ctx.fillRect(px, py + 2, ts, 1);
       }
     }
+    return;
+  }
+
+  if (type === TILE.POND) {
+    if (up !== TILE.POND) { ctx.fillStyle = 'rgba(214,236,255,0.6)'; ctx.fillRect(px, py, ts, 1); }   // the shine on top
     return;
   }
 

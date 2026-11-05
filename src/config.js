@@ -10,6 +10,7 @@ export const TILE = {
   EGG: 8,
   ANTHILL: 9,   // displaced soil piled above surface by dirt-carrying ants
   ROCK: 10,     // buried stone — tunnels have to route around it
+  POND: 11,     // standing water out on open land: nothing walks or digs into it
 };
 
 export const ROLE = {
@@ -106,6 +107,18 @@ export const CONFIG = {
   DIRT_GRAIN: 0.12,            // mound tiles added per load of dirt
   HILL_MAX: 7,                 // tallest the mound gets, in tiles
   HILL_SPREAD: 26,             // how far it sprawls either side of the entrance
+
+  // ── Land (modes with rules().land) ───────────────────────────────────────
+  TERRAIN_HARDNESS: 255,       // raised land is never dug: only projects dig, and none is planned up there
+  TERRAIN_FLAT: 30,            // tiles either side of the colony kept level, for the mound and the way in
+  TERRAIN_EASE: 12,            // …and how far beyond that the hills take to rise
+  TERRAIN_AMP: [0, 6],         // tallest the hills get, in tiles (chosen once per world)
+  TERRAIN_WAVES: [160, 70, 25],// wavelengths of the three swells summed for the hills, in tiles
+  TERRAIN_WAVE_SHARE: [0.55, 0.3, 0.15], // …and how much of the height each one gives
+  POND_WIDTH: [24, 50],        // columns of water
+  POND_BANK: [3, 5],           // height of the banks either side, in tiles
+  POND_DEPTH: 2,               // rows of water above the surface line
+  POND_KEEP_OUT: 4,            // columns either side of a pond no gallery is planned under
 
   // ── Food / water ─────────────────────────────────────────────────────────
   FOOD_STORE_MAX: 1000,

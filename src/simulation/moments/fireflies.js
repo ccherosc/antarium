@@ -22,13 +22,14 @@ export default {
     const n = Math.round(rand(...CONFIG.MOMENT_FIREFLIES));
     const flies = [];
     for (let i = 0; i < n; i++) {
+      const hx = cx + rand(-span / 2, span / 2);
       flies.push({
-        hx: cx + rand(-span / 2, span / 2), hy: SR - rand(2, 14),   // where it hovers about
+        hx, hy: SR - sim.world.lift(hx | 0) - rand(2, 14),   // where it hovers about, over the ground there
         phase: Math.random() * 100,   // where it is in its drift, and when it blinks (src/rendering/renderMoments.js)
         speed: rand(0.6, 1.4),
       });
     }
-    return { x: cx, y: SR - 6, flies, age: 0, len: Math.round(CONFIG.DAY_TICKS * CONFIG.MOMENT_FIREFLY_DAYS), fade: 0 };
+    return { x: cx, y: SR - 6 - sim.world.lift(cx | 0), flies, age: 0, len: Math.round(CONFIG.DAY_TICKS * CONFIG.MOMENT_FIREFLY_DAYS), fade: 0 };
   },
 
   tick(m) {

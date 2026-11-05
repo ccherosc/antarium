@@ -24,6 +24,7 @@ export const MODES = {
     fpsCap: 30,               // frames per second the farm is drawn at, until the player picks a cap
     world: { w: 240, h: 160, surface: 20, colonyX: 120 },   // tiles; set into CONFIG once at boot (src/main.js)
     frame: 'glass',           // 'glass': a farm in its case on the shelf; 'open': open land, filled edge to edge
+    land: false,              // hills and ponds above the surface line (src/simulation/land/terrain.js); flat lawn without
     intro: null,              // news line shown when the farm starts
   },
   biome: {
@@ -34,6 +35,7 @@ export const MODES = {
     pregrow: true, catchUp: true, fpsCap: 30,
     world: { w: 720, h: 180, surface: 30, colonyX: 360 },
     frame: 'open',
+    land: true,
     intro: null,
   },
   survival: {
@@ -44,6 +46,7 @@ export const MODES = {
     pregrow: false, catchUp: false, fpsCap: 60,
     world: { w: 240, h: 160, surface: 20, colonyX: 120 },
     frame: 'glass',
+    land: false,
     intro: 'Survival — keep the queen alive',
   },
 };

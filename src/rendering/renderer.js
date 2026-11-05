@@ -27,6 +27,7 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.open = rules().frame === 'open';   // open land: no room, case or glass, and the camera keeps to the land
+    this.land = rules().land;               // hills and ponds above the surface line, lit like the soil
     this.w = canvas.width;     // the size the farm is laid out in, in window pixels (see resize)
     this.h = canvas.height;
     this.effects = new Effects();
@@ -197,12 +198,31 @@ export class Renderer {
       g.addColorStop(1, 'rgba(255,214,140,0)');
       ctx.fillStyle = g;
       ctx.fillRect(x, y, w, 14 * u);
+      if (this.land) this._lightLand(ctx, camera, world, `rgba(255,214,140,${0.2 * sun})`);
     }
 
     const dark = (1 - sky.light) * 0.44 + sky.overcast * sky.light * 0.12;
     if (dark > 0.01) {
       ctx.fillStyle = `rgba(6,9,32,${dark})`;
       ctx.fillRect(x, y, w, h);
+      if (this.land) this._lightLand(ctx, camera, world, ctx.fillStyle);
+    }
+  }
+
+  // The hills and ponds above the surface line take the light the surface does: in the sun
+  // all the way up, and as dark as the soil at night. One fill per run of columns of a height.
+  _lightLand(ctx, camera, world, fill) {
+    const u = TS * camera.zoom, W = world.width, L = world.terrainH, P = world.pond;
+    const [ox, oy] = camera.worldToScreen(0, SR * TS);
+    const xa = Math.max(GT, Math.floor(-ox / u)), xb = Math.min(W - GT - 1, Math.ceil((camera.cw - ox) / u));
+    ctx.fillStyle = fill;
+    for (let x = xa; x <= xb; x++) {
+      const n = L[x] + P[x];
+      if (!n) continue;
+      let e = x;
+      while (e < xb && L[e + 1] + P[e + 1] === n) e++;
+      ctx.fillRect(ox + x * u, oy - n * u, (e - x + 1) * u, n * u);
+      x = e;
     }
   }
 

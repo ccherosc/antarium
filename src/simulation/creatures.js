@@ -92,6 +92,8 @@ export class CreatureSystem {
     // Creature presence keeps colony on edge — alarm builds slowly, spikes on attack
     world.alarmLevel = Math.min(1, world.alarmLevel + 0.002);
 
+    const x0 = c.x;   // where it stood, in case this step would take it into a pond
+
     // ── Cricket hop ────────────────────────────────────────────────────────
     if (c.type === 'cricket' && c.hopTimer !== undefined) {
       if (--c.hopTimer <= 0) {
@@ -131,6 +133,11 @@ export class CreatureSystem {
     }
 
     c.x += c.vx;
+
+    // Nothing that crawls swims: at a pond it turns round and goes back the way it came
+    if (world.pond[Math.max(0, Math.min(world.width - 1, c.x | 0))]) {
+      c.x = x0; c.vx = -c.vx; c.initialVx = -c.initialVx;
+    }
 
     // Off-screen → creature passed through; mark for silent removal
     if (c.x < GT - 3 || c.x > world.width - GT + 3) {

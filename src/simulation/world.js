@@ -1,8 +1,9 @@
 import { TILE, CONFIG, ROOM } from '../config.js';
 import { logEvent, emit } from '../events.js';
 import { rules } from '../modes.js';
+import { makeTerrain } from './land/terrain.js';
 
-const { AIR, SURFACE, SOIL, TUNNEL, CHAMBER, GLASS, FOOD, WATER, EGG, ANTHILL, ROCK } = TILE;
+const { AIR, SURFACE, SOIL, TUNNEL, CHAMBER, GLASS, FOOD, WATER, EGG, ANTHILL, ROCK, POND } = TILE;
 
 // Tiles ants can stand in underground / tiles that count as solid ground
 const OPEN = new Uint8Array(16);
@@ -46,7 +47,8 @@ function unpack(s, a) {
 }
 
 export class World {
-  constructor() {
+  // land: what makeTerrain is given for open land ({ ponds }), when the mode has rules().land
+  constructor(land = {}) {
     const { WORLD_WIDTH: W, WORLD_HEIGHT: H } = CONFIG;
     const N = W * H;
     this.width = W;
@@ -69,6 +71,11 @@ export class World {
     this.hillH = new Uint8Array(W);            // anthill height per column, in tiles
     this._hillAcc = new Float32Array(W);       // fractional dirt waiting to become a tile
     this.hillTotal = 0;
+    // the shape of open land (src/simulation/land/terrain.js), read back from the tiles in rebuildDerived
+    this.terrainH = new Uint8Array(W);         // raised soil above the surface line per column, in tiles
+    this.pond = new Uint8Array(W);             // pond water above the surface line per column, in tiles
+    this.wet = new Uint8Array(W);              // 1 under a pond and POND_KEEP_OUT either side: no digging
+    this._land = land;
     this.alarmLevel = 0; // 0=calm → 1=full war; decays each tick
 
     this.dirty = true;
@@ -229,7 +236,7 @@ export class World {
     if (x < 1 || y < 1 || x >= W - 1 || y >= this.height - 1) return 0;
     const T = this.tiles, i = y * W + x, t = T[i];
     if (OPEN[t]) return 1;
-    if (t !== AIR || y >= CONFIG.SURFACE_ROW) return 0;
+    if (t !== AIR || y >= CONFIG.SURFACE_ROW || this.pond[x]) return 0;   // nothing walks on water
     // open air counts only where there is ground to cling to
     return (GROUND[T[i + W]] || GROUND[T[i - 1]] || GROUND[T[i + 1]] ||
             GROUND[T[i + W - 1]] || GROUND[T[i + W + 1]] ||
@@ -256,6 +263,17 @@ export class World {
     this.openCount = 0;
     let soil = 0;
     for (const ch of this.chambers) ch.tiles = [];
+    // the land's shape: raised soil, then pond water, counted up from the surface line
+    const ko = CONFIG.POND_KEEP_OUT;
+    this.wet.fill(0);
+    for (let x = 0; x < W; x++) {
+      let n = 0, p = 0;
+      while (n < SR - 1 && T[(SR - 1 - n) * W + x] === SOIL) n++;
+      while (p < SR - 1 && T[(SR - 1 - p) * W + x] === POND) p++;
+      this.terrainH[x] = n;
+      this.pond[x] = p;
+      if (p) this.wet.fill(1, Math.max(0, x - ko), Math.min(W, x + ko + 1));
+    }
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const i = y * W + x, t = T[i];
@@ -520,6 +538,7 @@ export class World {
     // Every chamber must be reachable on foot from the entrance
     this._connectAll();
     this._roughen();
+    if (rules().land) makeTerrain(this, Math.random, this._land);
 
     this.rebuildDerived();
     for (const d of this.deposits) if (OPEN[T[d.y * W + d.x]]) d.found = true;
@@ -595,7 +614,7 @@ export class World {
     const W = this.width;
     const j = i + (Math.random() < 0.5 ? (Math.random() < 0.5 ? 1 : -1) : (Math.random() < 0.5 ? W : -W));
     const y = (j / W) | 0;
-    if (this.tiles[j] !== SOIL || this.planRoom[j] || y < CONFIG.SURFACE_ROW + 4) return -1;
+    if (this.tiles[j] !== SOIL || this.planRoom[j] || y < CONFIG.SURFACE_ROW + 4 || this.wet[j % W]) return -1;
     return this._inSoilBounds(j % W, y) ? j : -1;
   }
 
@@ -754,7 +773,7 @@ export class World {
         const nx = x + dx, ny = y + dy;
         if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
         const j = ny * W + nx;
-        if (T[j] !== SOIL) continue;
+        if (T[j] !== SOIL || this.wet[nx]) continue;   // never under a pond
         let step = dig(j), mid = -1;
         if (dx && dy) {
           // a slant is dug as a stair: one tile sideways, one up or down
@@ -969,7 +988,7 @@ export class World {
       const x = rnd(GT + 3 + rx, W - GT - 4 - rx);
       const y = rnd(SR + 7 + ry, this.height - GT - 4 - ry);
       const i = y * W + x;
-      if (this.tiles[i] !== SOIL) continue;
+      if (this.tiles[i] !== SOIL || this.wet[x - rx] || this.wet[x + rx]) continue;   // not under a pond
       const d = near[i];
       if (d < need) continue;
       const s = -Math.abs(d - pref) + Math.random() * 3;
@@ -1054,7 +1073,7 @@ export class World {
     let best = -1, bd = 60;
     for (let k = 0; k < this.deposits.length; k++) {
       const dp = this.deposits[k];
-      if (dp.found) continue;
+      if (dp.found || this.wet[dp.x]) continue;
       const i = dp.y * W + dp.x;
       if (T[i] !== SOIL) { if (OPEN[T[i]]) dp.found = true; continue; }
       if (near[i] < bd) { bd = near[i]; best = k; }
@@ -1122,9 +1141,15 @@ export class World {
 
   // ── The surface ──────────────────────────────────────────────────────────
 
+  // How many tiles the ground in column x stands above the surface line: the land, a pond's
+  // water, the anthill
+  lift(x) {
+    return this.terrainH[x] + this.pond[x] + this.hillH[x];
+  }
+
   // Row an ant stands in when it walks over column x
   groundRow(x) {
-    return CONFIG.SURFACE_ROW - 1 - this.hillH[x];
+    return CONFIG.SURFACE_ROW - 1 - this.lift(x);
   }
 
   // Smoothed standing height for anything crossing the surface at a fractional x
@@ -1132,7 +1157,7 @@ export class World {
     const f = Math.max(0, Math.min(this.width - 1, xf - 0.5));   // level beyond either end
     const x0 = Math.floor(f), t = f - x0;
     const x1 = Math.min(this.width - 1, x0 + 1);
-    const h = this.hillH[x0] * (1 - t) + this.hillH[x1] * t;
+    const h = this.lift(x0) * (1 - t) + this.lift(x1) * t;
     return CONFIG.SURFACE_ROW - 0.5 - h;
   }
 
@@ -1201,6 +1226,7 @@ export class World {
       const t = this.tiles[y * W + x];
       if (OPEN[t]) return y * W + x;
     }
+    if (this.pond[x]) return -1;   // it would sink
     return this.groundRow(x) * W + x;
   }
 
@@ -1262,8 +1288,8 @@ export class World {
     if (n >= 9) return false;
     for (let attempt = 0; attempt < 20; attempt++) {
       const x = GT + 4 + Math.floor(Math.random() * (W - GT * 2 - 9));
-      if (Math.abs(x - CX) < 8 || this.hillH[x]) continue;
-      if (this.tiles[(SR - 1) * W + x] !== AIR) continue;
+      if (Math.abs(x - CX) < 8 || this.hillH[x] || this.pond[x]) continue;
+      if (this.tiles[this.groundRow(x) * W + x] !== AIR) continue;
       return this.placeWater(x, 0, amount);
     }
     return false;

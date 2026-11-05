@@ -43,7 +43,7 @@ export class Effects {
       while (this._splash >= 1) {
         this._splash--;
         const x = rnd(GT + 1, W - GT - 1);
-        this.parts.push({ x, y: SR - world.hillH[x | 0], vx: rnd(-1.4, 1.4), vy: rnd(-3.4, -1.6), g: 16,
+        this.parts.push({ x, y: SR - world.lift(x | 0), vx: rnd(-1.4, 1.4), vy: rnd(-3.4, -1.6), g: 16,
                           life: 0, max: rnd(0.16, 0.3), r: 0.13, c: '#d4e6ff' });
       }
       // …and running down the entrance shaft
@@ -146,11 +146,12 @@ export class Effects {
     this._again = rnd(0.07, 0.16);
     const pts = [];
     let x = rnd(GT + 12, world.width - GT - 12);
-    for (let y = GT; y < SR - 1; y += rnd(1.6, 3.2)) {
+    const ground = x => SR - world.lift(Math.max(0, Math.min(world.width - 1, x | 0)));
+    for (let y = GT; y < ground(x) - 1; y += rnd(1.6, 3.2)) {
       pts.push([x, y]);
       x = Math.max(GT + 1, Math.min(world.width - GT - 2, x + rnd(-2.6, 2.6)));
     }
-    pts.push([x, SR - world.hillH[Math.max(0, Math.min(world.width - 1, x | 0))]]);
+    pts.push([x, ground(x)]);
     this.bolt = pts;
   }
 
@@ -198,7 +199,7 @@ export class Effects {
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const x = GT + hash(i * 3 + 7) * (W - GT * 2);
-        const top = SR - world.hillH[x | 0];
+        const top = SR - world.lift(x | 0);
         const f = (hash(i * 3 + 8) + t * (1.5 + hash(i * 3 + 9) * 0.9)) % 1;
         const y1 = GT + f * (top - GT + len);
         const ya = Math.max(GT, y1 - len), yb = Math.min(top, y1);

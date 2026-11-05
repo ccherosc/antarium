@@ -66,9 +66,14 @@ function debugWorld() {
   return { w, h, surface: m[3] ? +m[3] : rules().world.surface, colonyX: w >> 1 };
 }
 
+// ?debug&pond=1: a pond 80 tiles from the colony on open land, so it can be tried before a biome has one
+function debugLand() {
+  return DEBUG && params.get('pond') === '1' ? { ponds: [CONFIG.COLONY_X + 80] } : {};
+}
+
 // A colony is only built once the mode is known — it decides how long ants live
 function createSim() {
-  const world     = new World();
+  const world     = new World(debugLand());
   const sky       = new Sky(rules().pregrow ? CONFIG.PREGROW_START_PHASE : CONFIG.DAY_START_PHASE);
   world.sky       = sky;
   const antSystem = new AntSystem(world);

@@ -181,7 +181,7 @@ plants, creatures and moments. Zen stays the tank. Needs T2.8–T2.9; T9.11 need
 - [x] T9.1 [S] World size per mode (mode `world` field, lazy size constants)
 - [x] T9.2 [S] The simulation at three times the size (measure; nav budget, saves, redraws)
 - [x] T9.3 [S] The Biome mode (mode row, title button, open frame, height-fit camera)
-- [ ] T9.4 [S] The shape of the land: hills, banks and ponds (`terrainH`, save bump)
+- [x] T9.4 [S] The shape of the land: hills, banks and ponds (`terrainH`, save bump)
 - [ ] T9.5 [S] Biomes: the table and the seeded layout (soil per biome)
 - [ ] T9.6 [S] Dressing the land: plants, parallax ridges, fog at the ends
 - [ ] T9.7 [S] Filming a wide world: place shots and journeys

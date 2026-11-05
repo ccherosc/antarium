@@ -2,7 +2,7 @@ import { ROLE, STATE, CONFIG } from '../config.js';
 import { hash } from './renderSky.js';
 
 const C = CONFIG;
-const TS = C.TILE_SIZE, SR = C.SURFACE_ROW, GT = C.GLASS_THICKNESS;
+const TS = C.TILE_SIZE, GT = C.GLASS_THICKNESS;   // the surface row is the mode's, so it is read where it is used
 
 // What an ant holds, by CARRY id: nothing, food, water, dirt, brood
 const LOAD = [null, '#f8d040', '#58a8f0', '#8a6a44', '#f6f0dc'];
@@ -439,7 +439,7 @@ export function renderAnts(ctx, antSystem, queen, camera, alpha = 1, t = 0) {
 
     if (!air) {
       // keep right: two lanes of traffic in every tunnel
-      const lane = LANE * Math.max(0, Math.min(1, y - SR + 1));
+      const lane = LANE * Math.max(0, Math.min(1, y - C.SURFACE_ROW + 1));
       if (lane > 0) { x -= Math.sin(a) * lane; y += Math.cos(a) * lane; }
       if (ant.state === STATE.DIGGING) {   // worrying at the soil face
         const j = 0.12 * Math.sin(t * 14 + ant.id);
