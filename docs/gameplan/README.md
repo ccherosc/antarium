@@ -146,6 +146,27 @@ stronger model write a detailed spec per update before Sonnet builds it.
 - [ ] U6 Hygiene (middens, corpse removal, mold, disease)
 - [ ] U7 Species packs (harvester, carpenter, leafcutter)
 
+### M8 — Wars of nature (Zen part three) → `M8-wars.md`
+A second farm on the shelf, a rival black tribe, wars as short films, and the wars of the
+meadow. Needs T2.8–T2.9; the Survival tickets (T8.14–T8.17) need M5 T5.1–T5.6.
+- [ ] T8.1 [S] The neighbours' farm on the shelf (light sim, cached render, shelf wide shot)
+- [ ] T8.2 [S] Tribes and palettes; the neighbours' crowd
+- [ ] T8.3 [S] The tube, warriors, and the scouts moment
+- [ ] T8.4 [S] Fights that read in pixels (duels, gang-ups, spray, the fallen)
+- [ ] T8.5 [S] The war as a film (acts, letterbox, war shots)
+- [ ] T8.6 [S] Zen war rules, the `wars` setting, stories
+- [ ] T8.7 [S] The sound of war (march, clash, drum layer)
+- [ ] T8.8 [S] Nature war: the marauders (army-ant sweep, plugging the gate)
+- [ ] T8.9 [S] Nature war: the aphid ranch and the ladybug
+- [ ] T8.10 [S] Small wars of nature (antlion, spider wasp, dragonflies, mantis)
+- [ ] T8.11 [S] Our turn: the counter-raid
+- [ ] T8.12 [H] The chronicle of the shelf
+- [ ] T8.13 [S] Stability and performance pass for wars
+- [ ] T8.14 [S] Survival: the neighbours are hostile (raids, brood theft)
+- [ ] T8.15 [H] Survival: war tools and cards
+- [ ] T8.16 [S] Survival: counter-raid and conquest scenarios
+- [ ] T8.17 [H] Survival: nature as threats
+
 ---
 
 ## Code map (where things live)
@@ -161,6 +182,8 @@ stronger model write a detailed spec per update before Sonnet builds it.
 | Clock, weather, dew, nuptial flights | `src/simulation/sky.js` | `_dawn()`, `_weather()`, `_flight()` |
 | Flow-field navigation | `src/simulation/nav.js` | |
 | Surface creatures | `src/simulation/creatures.js` | `_trySpawn()` |
+| Moments (fireflies, earthworm, beetle, …) | `src/simulation/moments/` | `index.js` lists `MOMENTS`; one file per moment |
+| Wars (M8, planned) | `src/simulation/war/` | `tribes.js`, `rivalFarm.js` (`sim.rival`), `army.js` (`sim.war`), `campaign.js` |
 | Stats for the dashboard | `src/simulation/stats.js` | |
 | Fixed-step loop, speed | `src/app/gameLoop.js` | `SIM_STEP` 16 ms, `setSpeed(0..8)` |
 | Camera / cinematic tour | `src/app/camera.js`, `src/app/director.js` | |
