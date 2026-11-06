@@ -861,6 +861,13 @@ As built (`src/app/gameLoop.js`, `src/main.js`, the new `src/ui/crashDialog.js`;
 **Done when:** 8 hours real time with no errors, fps at hour 8 within 10% of hour 1, heap
 flat.
 
+As built (`tests/soak.mjs`): `npm run soak -- --realtime --hours 8 [--every 10]` runs the game at 1x in a
+headed Chromium window, samples every 10 minutes (fps from the game loop, rAF count over 5 s, heap,
+population, ticks/s) into `tests/out/soak-realtime-screensaver.csv`, keeps the machine awake, and ends with a
+verdict. The run on 2026-11-05 (laptop plugged in, window visible) passed 480 min with no errors: fps
+30.1 -> 30.1, rAF 60.1 -> 60.2, heap 17.4 (minute 60) -> 18.7 MB, flat from there, population 600 -> 658.
+No fixes were needed.
+
 ---
 
 ## T1.9 [H] Accessibility pass
